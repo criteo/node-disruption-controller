@@ -4,6 +4,28 @@
 ## Description
 // TODO(user): An in-depth paragraph about your project and overview of use
 
+### NodeDisruption
+
+The NodeDisruption represent the disruption of one or more nodes. The controller
+doesn't make any asumption on the nature of the disruption (reboot, network down).
+
+```
+apiVersion: nodedisruption.criteo.com/v1alpha1
+kind: NodeDisruption
+metadata:
+  labels:
+    app.kubernetes.io/name: nodedisruption
+    app.kubernetes.io/instance: nodedisruption-sample
+    app.kubernetes.io/part-of: node-disruption-controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: node-disruption-controller
+  name: nodedisruption-sample
+spec:
+  nodeSelector: # Select all the nodes impacted by the disruption
+    matchLabels:
+      kubernetes.io/hostname: fakehostname
+```
+
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
 **Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).

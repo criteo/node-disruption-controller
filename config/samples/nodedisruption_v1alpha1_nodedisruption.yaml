@@ -9,4 +9,6 @@ metadata:
     app.kubernetes.io/created-by: node-disruption-controller
   name: nodedisruption-sample
 spec:
-  # TODO(user): Add fields here
+  nodeSelector: # Select all the nodes impacted by the disruption
+    matchLabels:
+      kubernetes.io/hostname: fakehostname

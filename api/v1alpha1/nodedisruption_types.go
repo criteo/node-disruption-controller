@@ -23,19 +23,30 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// This is the same as types.NamespacedName but serialisable to JSON
+type NamespacedName struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+}
+
 // NodeDisruptionSpec defines the desired state of NodeDisruption
 type NodeDisruptionSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of NodeDisruption. Edit nodedisruption_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Label query over nodes that will be impacted by the disruption
+	NodeSelector metav1.LabelSelector `json:"nodeSelector,omitempty"`
 }
 
-// NodeDisruptionStatus defines the observed state of NodeDisruption
+// NodeDisruptionStatus defines the observed state of NodeDisruption (/!\ it is eventually consistent)
 type NodeDisruptionStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// List of all the ApplicationDisruptionBudget that are disrupted by this NodeDisruption
+	DisruptedADB []NamespacedName `json:"disruptedADB"`
+	// List of all the NDB that are disrupted by this NodeDisruption
+	DisruptedNodes []string `json:"disruptedNodes"`
 }
 
 //+kubebuilder:object:root=true
