@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- nodedisruption_v1alpha1_nodedisruption.yaml
+- nodedisruption_v1alpha1_applicationdisruptionbudget.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

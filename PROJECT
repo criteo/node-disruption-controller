@@ -7,4 +7,23 @@ layout:
 - go.kubebuilder.io/v4
 projectName: node-disruption-controller
 repo: github.com/criteo/node-disruption-controller
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: criteo.com
+  group: nodedisruption
+  kind: NodeDisruption
+  path: github.com/criteo/node-disruption-controller/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: criteo.com
+  group: nodedisruption
+  kind: ApplicationDisruptionBudget
+  path: github.com/criteo/node-disruption-controller/api/v1alpha1
+  version: v1alpha1
 version: "3"
