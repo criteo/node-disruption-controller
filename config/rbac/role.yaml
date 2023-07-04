@@ -1,0 +1,58 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - nodedisruption.criteo.com
+  resources:
+  - applicationdisruptionbudgets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - nodedisruption.criteo.com
+  resources:
+  - applicationdisruptionbudgets/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - nodedisruption.criteo.com
+  resources:
+  - applicationdisruptionbudgets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - nodedisruption.criteo.com
+  resources:
+  - nodedisruptions
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - nodedisruption.criteo.com
+  resources:
+  - nodedisruptions/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - nodedisruption.criteo.com
+  resources:
+  - nodedisruptions/status
+  verbs:
+  - get
+  - patch
+  - update
