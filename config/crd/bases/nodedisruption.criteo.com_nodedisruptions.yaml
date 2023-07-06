@@ -101,7 +101,7 @@ spec:
                   type: object
                 type: array
               disruptedNodes:
-                description: List of all the NDB that are disrupted by this NodeDisruption
+                description: List of all the nodes that are disrupted by this NodeDisruption
                 items:
                   type: string
                 type: array

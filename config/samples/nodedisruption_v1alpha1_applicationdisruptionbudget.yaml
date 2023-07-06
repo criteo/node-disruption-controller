@@ -9,4 +9,6 @@ metadata:
     app.kubernetes.io/created-by: node-disruption-controller
   name: applicationdisruptionbudget-sample
 spec:
-  # TODO(user): Add fields here
+  podSelector: # Select pods to protect by the budget
+    matchLabels:
+      app: nginx
