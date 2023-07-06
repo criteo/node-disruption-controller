@@ -28,14 +28,31 @@ type ApplicationDisruptionBudgetSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of ApplicationDisruptionBudget. Edit applicationdisruptionbudget_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// A NodeDisruption is allowed if at most "maxUnavailable" nodes selected by selectors are unavailable after the disruption.
+	MaxUnavailable int `json:"maxUnavailable,omitempty"`
+	// A MinAvailable is allowed if at least "MinAvailable" nodes selected by selectors will still be available after the disruption.
+	MinAvailable int `json:"minAvailable,omitempty"`
+	// PodSelector query over pods whose nodes are managed by the disruption budget.
+	PodSelector metav1.LabelSelector `json:"podSelector,omitempty"`
+	// PVCSelector query over PVCs whose nodes are managed by the disruption budget.
+	PVCSelector metav1.LabelSelector `json:"pvcSelector,omitempty"`
 }
 
 // ApplicationDisruptionBudgetStatus defines the observed state of ApplicationDisruptionBudget
 type ApplicationDisruptionBudgetStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// List of nodes that are being watched by the controller
+	// Disruption on this nodes will will be made according to the budget
+	// of this cluster.
+	WatchedNodes []string `json:"watchedNodes"`
+
+	// Number of disruption allowed on the nodes of this
+	DisruptionsAllowed int `json:"disruptionsAllowed"`
+
+	// Number of disruption currently seen on the cluster
+	CurrentDisruptions int `json:"currentDisruptions"`
 }
 
 //+kubebuilder:object:root=true

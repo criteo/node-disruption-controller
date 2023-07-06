@@ -36,14 +36,128 @@ spec:
             description: ApplicationDisruptionBudgetSpec defines the desired state
               of ApplicationDisruptionBudget
             properties:
-              foo:
-                description: Foo is an example field of ApplicationDisruptionBudget.
-                  Edit applicationdisruptionbudget_types.go to remove/update
-                type: string
+              maxUnavailable:
+                description: A NodeDisruption is allowed if at most "maxUnavailable"
+                  nodes selected by selectors are unavailable after the disruption.
+                type: integer
+              minAvailable:
+                description: A MinAvailable is allowed if at least "MinAvailable"
+                  nodes selected by selectors will still be available after the disruption.
+                type: integer
+              podSelector:
+                description: PodSelector query over pods whose nodes are managed by
+                  the disruption budget.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: A label selector requirement is a selector that
+                        contains values, a key, and an operator that relates the key
+                        and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: operator represents a key's relationship to
+                            a set of values. Valid operators are In, NotIn, Exists
+                            and DoesNotExist.
+                          type: string
+                        values:
+                          description: values is an array of string values. If the
+                            operator is In or NotIn, the values array must be non-empty.
+                            If the operator is Exists or DoesNotExist, the values
+                            array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: matchLabels is a map of {key,value} pairs. A single
+                      {key,value} in the matchLabels map is equivalent to an element
+                      of matchExpressions, whose key field is "key", the operator
+                      is "In", and the values array contains only "value". The requirements
+                      are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              pvcSelector:
+                description: PVCSelector query over PVCs whose nodes are managed by
+                  the disruption budget.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: A label selector requirement is a selector that
+                        contains values, a key, and an operator that relates the key
+                        and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: operator represents a key's relationship to
+                            a set of values. Valid operators are In, NotIn, Exists
+                            and DoesNotExist.
+                          type: string
+                        values:
+                          description: values is an array of string values. If the
+                            operator is In or NotIn, the values array must be non-empty.
+                            If the operator is Exists or DoesNotExist, the values
+                            array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: matchLabels is a map of {key,value} pairs. A single
+                      {key,value} in the matchLabels map is equivalent to an element
+                      of matchExpressions, whose key field is "key", the operator
+                      is "In", and the values array contains only "value". The requirements
+                      are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
             type: object
           status:
             description: ApplicationDisruptionBudgetStatus defines the observed state
               of ApplicationDisruptionBudget
+            properties:
+              currentDisruptions:
+                description: Number of disruption currently seen on the cluster
+                type: integer
+              disruptionsAllowed:
+                description: Number of disruption allowed on the nodes of this
+                type: integer
+              watchedNodes:
+                description: List of nodes that are being watched by the controller
+                  Disruption on this nodes will will be made according to the budget
+                  of this cluster.
+                items:
+                  type: string
+                type: array
+            required:
+            - currentDisruptions
+            - disruptionsAllowed
+            - watchedNodes
             type: object
         type: object
     served: true

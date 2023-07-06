@@ -26,6 +26,29 @@ spec:
       kubernetes.io/hostname: fakehostname
 ```
 
+### ApplicationDisruptionBudget
+
+The ApplicationDisruptionBudget provide a way to set constraints for an application
+running inside Kubernetes. It can select Pod (like PDB) but also PVC (to protect data).
+
+
+```
+apiVersion: nodedisruption.criteo.com/v1alpha1
+kind: ApplicationDisruptionBudget
+metadata:
+  labels:
+    app.kubernetes.io/name: applicationdisruptionbudget
+    app.kubernetes.io/instance: applicationdisruptionbudget-sample
+    app.kubernetes.io/part-of: node-disruption-controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: node-disruption-controller
+  name: applicationdisruptionbudget-sample
+spec:
+  podSelector: # Select pods to protect by the budget
+    matchLabels:
+      app: nginx
+```
+
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
 **Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).
