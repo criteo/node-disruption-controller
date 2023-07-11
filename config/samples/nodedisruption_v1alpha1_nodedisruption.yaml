@@ -9,6 +9,7 @@ metadata:
     app.kubernetes.io/created-by: node-disruption-controller
   name: nodedisruption-sample
 spec:
+  state: pending
   nodeSelector:
     matchLabels:
       kubernetes.io/hostname: node

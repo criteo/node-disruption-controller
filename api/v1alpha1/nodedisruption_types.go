@@ -29,6 +29,14 @@ type NamespacedName struct {
 	Name      string `json:"name"`
 }
 
+type NodeDisruptionState string
+
+const (
+	Pending  NodeDisruptionState = "pending"
+	Granted  NodeDisruptionState = "granted"
+	Rejected NodeDisruptionState = "rejected"
+)
+
 // NodeDisruptionSpec defines the desired state of NodeDisruption
 type NodeDisruptionSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -36,6 +44,10 @@ type NodeDisruptionSpec struct {
 
 	// Label query over nodes that will be impacted by the disruption
 	NodeSelector metav1.LabelSelector `json:"nodeSelector,omitempty"`
+
+	// +kubebuilder:default="pending"
+	// Disruption status
+	State NodeDisruptionState `json:"state"`
 }
 
 // NodeDisruptionStatus defines the observed state of NodeDisruption (/!\ it is eventually consistent)
@@ -52,6 +64,7 @@ type NodeDisruptionStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster,shortName=nd
+//+kubebuilder:printcolumn:name="State",type=string,JSONPath=`.spec.state`
 
 // NodeDisruption is the Schema for the nodedisruptions API
 type NodeDisruption struct {

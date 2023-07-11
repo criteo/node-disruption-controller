@@ -144,15 +144,19 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+            required:
+            - maxUnavailable
             type: object
           status:
             description: ApplicationDisruptionBudgetStatus defines the observed state
               of ApplicationDisruptionBudget
             properties:
               currentDisruptions:
+                default: 0
                 description: Number of disruption currently seen on the cluster
                 type: integer
               disruptionsAllowed:
+                default: 0
                 description: Number of disruption allowed on the nodes of this
                 type: integer
               watchedNodes:
@@ -162,6 +166,9 @@ spec:
                 items:
                   type: string
                 type: array
+            required:
+            - currentDisruptions
+            - disruptionsAllowed
             type: object
         type: object
     served: true
