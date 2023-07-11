@@ -29,7 +29,7 @@ type ApplicationDisruptionBudgetSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// A NodeDisruption is allowed if at most "maxUnavailable" nodes selected by selectors are unavailable after the disruption.
-	MaxUnavailable int `json:"maxUnavailable,omitempty"`
+	MaxUnavailable int `json:"maxUnavailable"`
 	// PodSelector query over pods whose nodes are managed by the disruption budget.
 	PodSelector metav1.LabelSelector `json:"podSelector,omitempty"`
 	// PVCSelector query over PVCs whose nodes are managed by the disruption budget.
@@ -47,10 +47,12 @@ type ApplicationDisruptionBudgetStatus struct {
 	WatchedNodes []string `json:"watchedNodes,omitempty"`
 
 	// Number of disruption allowed on the nodes of this
-	DisruptionsAllowed int `json:"disruptionsAllowed,omitempty"`
+	// +kubebuilder:default=0
+	DisruptionsAllowed int `json:"disruptionsAllowed"`
 
 	// Number of disruption currently seen on the cluster
-	CurrentDisruptions int `json:"currentDisruptions,omitempty"`
+	// +kubebuilder:default=0
+	CurrentDisruptions int `json:"currentDisruptions"`
 }
 
 //+kubebuilder:object:root=true

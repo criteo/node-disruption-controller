@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -154,6 +155,9 @@ func (adbr *ApplicationDisruptionBudgetResolver) ResolveDisruption(ctx context.C
 	}
 
 	for _, nd := range node_disruptions.Items {
+		if nd.Spec.State != nodedisruptionv1alpha1.Granted {
+			continue
+		}
 		node_disruption_resolver := NodeDisruptionResolver{
 			NodeDisruption: &nd,
 			Client:         adbr.Client,
@@ -184,8 +188,9 @@ func (adbr *ApplicationDisruptionBudgetResolver) AllowDisruption(ctx context.Con
 		return true, false, err
 	}
 
-	if disruption > adbr.ApplicationDisruptionBudget.Spec.MaxUnavailable {
-		return true, true, nil
+	fmt.Println(disruption, adbr.ApplicationDisruptionBudget.Spec.MaxUnavailable)
+	if disruption+1 > adbr.ApplicationDisruptionBudget.Spec.MaxUnavailable {
+		return true, false, nil
 	}
-	return true, false, nil
+	return true, true, nil
 }

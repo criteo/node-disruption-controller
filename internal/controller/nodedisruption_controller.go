@@ -18,10 +18,13 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/golang-collections/collections/set"
@@ -32,7 +35,8 @@ import (
 // NodeDisruptionReconciler reconciles a NodeDisruption object
 type NodeDisruptionReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=nodedisruption.criteo.com,resources=nodedisruptions,verbs=get;list;watch;create;update;patch;delete
@@ -49,6 +53,9 @@ type NodeDisruptionReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Start reconcile of NodeDisruption")
+
 	nd := &nodedisruptionv1alpha1.NodeDisruption{}
 	err := r.Client.Get(ctx, req.NamespacedName, nd)
 
@@ -75,19 +82,26 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	disrupted_adb := []nodedisruptionv1alpha1.NamespacedName{}
+	all_allowed := true
+	reject_reason := ""
 
 	for _, adb := range node_disruption_budgets.Items {
 		adb_resolver := ApplicationDisruptionBudgetResolver{
 			ApplicationDisruptionBudget: &adb,
 			Client:                      r.Client,
 		}
-		impacted, _, err := adb_resolver.AllowDisruption(ctx, nodes)
+		impacted, allowed, err := adb_resolver.AllowDisruption(ctx, nodes)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 
 		if impacted {
 			disrupted_adb = append(disrupted_adb, nodedisruptionv1alpha1.NamespacedName{Name: adb.Name, Namespace: adb.Namespace})
+
+			if !allowed {
+				all_allowed = false
+				reject_reason = fmt.Sprintf("%s (in %s) doesn't allow more disruption", adb.Name, adb.Namespace)
+			}
 		}
 	}
 
@@ -102,16 +116,32 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	nd.Status.DisruptedADB = disrupted_adb
 	nd.Status.DisruptedNodes = disrupted_nodes
 
+	if nd.Spec.State == nodedisruptionv1alpha1.Pending {
+		if all_allowed {
+			nd.Spec.State = nodedisruptionv1alpha1.Granted
+		} else {
+			nd.Spec.State = nodedisruptionv1alpha1.Rejected
+			r.Recorder.Event(nd, "Normal", "Rejected", reject_reason)
+		}
+	}
+
+	err = r.Update(ctx, nd, []client.UpdateOption{}...)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	err = r.Status().Update(ctx, nd, []client.SubResourceUpdateOption{}...)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
+	logger.Info("Reconcilation successful", "state", nd.Spec.State)
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *NodeDisruptionReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.Recorder = mgr.GetEventRecorderFor("node-disruption-controller")
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nodedisruptionv1alpha1.NodeDisruption{}).
 		Complete(r)
