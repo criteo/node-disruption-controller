@@ -44,13 +44,14 @@ type NodeDisruptionStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// List of all the ApplicationDisruptionBudget that are disrupted by this NodeDisruption
-	DisruptedADB []NamespacedName `json:"disruptedADB"`
+	DisruptedADB []NamespacedName `json:"disruptedADB,omitempty"`
 	// List of all the nodes that are disrupted by this NodeDisruption
-	DisruptedNodes []string `json:"disruptedNodes"`
+	DisruptedNodes []string `json:"disruptedNodes,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:resource:scope=Cluster,shortName=nd
 
 // NodeDisruption is the Schema for the nodedisruptions API
 type NodeDisruption struct {

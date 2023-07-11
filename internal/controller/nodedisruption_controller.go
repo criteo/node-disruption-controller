@@ -22,9 +22,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
+	"github.com/golang-collections/collections/set"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // NodeDisruptionReconciler reconciles a NodeDisruption object
@@ -47,9 +49,63 @@ type NodeDisruptionReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	nd := &nodedisruptionv1alpha1.NodeDisruption{}
+	err := r.Client.Get(ctx, req.NamespacedName, nd)
 
-	// TODO(user): your logic here
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	resolver := NodeDisruptionResolver{
+		NodeDisruption: nd,
+		Client:         r.Client,
+	}
+
+	nodes, err := resolver.ResolveNodes(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	opts := []client.ListOption{}
+	node_disruption_budgets := &nodedisruptionv1alpha1.ApplicationDisruptionBudgetList{}
+
+	err = r.Client.List(ctx, node_disruption_budgets, opts...)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	disrupted_adb := []nodedisruptionv1alpha1.NamespacedName{}
+
+	for _, adb := range node_disruption_budgets.Items {
+		adb_resolver := ApplicationDisruptionBudgetResolver{
+			ApplicationDisruptionBudget: &adb,
+			Client:                      r.Client,
+		}
+		impacted, _, err := adb_resolver.AllowDisruption(ctx, nodes)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if impacted {
+			disrupted_adb = append(disrupted_adb, nodedisruptionv1alpha1.NamespacedName{Name: adb.Name, Namespace: adb.Namespace})
+		}
+	}
+
+	// Create a slice to store the set elements
+	disrupted_nodes := make([]string, 0, nodes.Len())
+
+	// Iterate over the set and append elements to the slice
+	nodes.Do(func(item interface{}) {
+		disrupted_nodes = append(disrupted_nodes, item.(string))
+	})
+
+	nd.Status.DisruptedADB = disrupted_adb
+	nd.Status.DisruptedNodes = disrupted_nodes
+
+	err = r.Status().Update(ctx, nd, []client.SubResourceUpdateOption{}...)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -59,4 +115,31 @@ func (r *NodeDisruptionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nodedisruptionv1alpha1.NodeDisruption{}).
 		Complete(r)
+}
+
+type NodeDisruptionResolver struct {
+	NodeDisruption *nodedisruptionv1alpha1.NodeDisruption
+	Client         client.Client
+}
+
+// Resolve the nodes impacted by the NodeDisruption
+func (ndr *NodeDisruptionResolver) ResolveNodes(ctx context.Context) (*set.Set, error) {
+	node_names := set.New()
+	selector, err := metav1.LabelSelectorAsSelector(&ndr.NodeDisruption.Spec.NodeSelector)
+	if err != nil {
+		return node_names, err
+	}
+	opts := []client.ListOption{
+		client.MatchingLabelsSelector{Selector: selector},
+	}
+	nodes := &corev1.NodeList{}
+	err = ndr.Client.List(ctx, nodes, opts...)
+	if err != nil {
+		return node_names, err
+	}
+
+	for _, node := range nodes.Items {
+		node_names.Insert(node.Name)
+	}
+	return node_names, nil
 }

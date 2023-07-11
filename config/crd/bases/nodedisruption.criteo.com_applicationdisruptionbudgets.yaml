@@ -11,10 +11,22 @@ spec:
     kind: ApplicationDisruptionBudget
     listKind: ApplicationDisruptionBudgetList
     plural: applicationdisruptionbudgets
+    shortNames:
+    - adb
     singular: applicationdisruptionbudget
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.maxUnavailable
+      name: Max Unavailable
+      type: integer
+    - jsonPath: .status.disruptionsAllowed
+      name: Disruptions Allowed
+      type: integer
+    - jsonPath: .status.currentDisruptions
+      name: Current Disruptions
+      type: integer
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ApplicationDisruptionBudget is the Schema for the applicationdisruptionbudgets
@@ -39,10 +51,6 @@ spec:
               maxUnavailable:
                 description: A NodeDisruption is allowed if at most "maxUnavailable"
                   nodes selected by selectors are unavailable after the disruption.
-                type: integer
-              minAvailable:
-                description: A MinAvailable is allowed if at least "MinAvailable"
-                  nodes selected by selectors will still be available after the disruption.
                 type: integer
               podSelector:
                 description: PodSelector query over pods whose nodes are managed by
@@ -154,10 +162,6 @@ spec:
                 items:
                   type: string
                 type: array
-            required:
-            - currentDisruptions
-            - disruptionsAllowed
-            - watchedNodes
             type: object
         type: object
     served: true

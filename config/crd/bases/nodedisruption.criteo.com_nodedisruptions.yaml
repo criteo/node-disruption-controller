@@ -11,8 +11,10 @@ spec:
     kind: NodeDisruption
     listKind: NodeDisruptionList
     plural: nodedisruptions
+    shortNames:
+    - nd
     singular: nodedisruption
-  scope: Namespaced
+  scope: Cluster
   versions:
   - name: v1alpha1
     schema:
@@ -105,9 +107,6 @@ spec:
                 items:
                   type: string
                 type: array
-            required:
-            - disruptedADB
-            - disruptedNodes
             type: object
         type: object
     served: true
