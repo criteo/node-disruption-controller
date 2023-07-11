@@ -30,8 +30,6 @@ type ApplicationDisruptionBudgetSpec struct {
 
 	// A NodeDisruption is allowed if at most "maxUnavailable" nodes selected by selectors are unavailable after the disruption.
 	MaxUnavailable int `json:"maxUnavailable,omitempty"`
-	// A MinAvailable is allowed if at least "MinAvailable" nodes selected by selectors will still be available after the disruption.
-	MinAvailable int `json:"minAvailable,omitempty"`
 	// PodSelector query over pods whose nodes are managed by the disruption budget.
 	PodSelector metav1.LabelSelector `json:"podSelector,omitempty"`
 	// PVCSelector query over PVCs whose nodes are managed by the disruption budget.
@@ -46,17 +44,21 @@ type ApplicationDisruptionBudgetStatus struct {
 	// List of nodes that are being watched by the controller
 	// Disruption on this nodes will will be made according to the budget
 	// of this cluster.
-	WatchedNodes []string `json:"watchedNodes"`
+	WatchedNodes []string `json:"watchedNodes,omitempty"`
 
 	// Number of disruption allowed on the nodes of this
-	DisruptionsAllowed int `json:"disruptionsAllowed"`
+	DisruptionsAllowed int `json:"disruptionsAllowed,omitempty"`
 
 	// Number of disruption currently seen on the cluster
-	CurrentDisruptions int `json:"currentDisruptions"`
+	CurrentDisruptions int `json:"currentDisruptions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:resource:shortName=adb
+//+kubebuilder:printcolumn:name="Max Unavailable",type=integer,JSONPath=`.spec.maxUnavailable`
+//+kubebuilder:printcolumn:name="Disruptions Allowed",type=integer,JSONPath=`.status.disruptionsAllowed`
+//+kubebuilder:printcolumn:name="Current Disruptions",type=integer,JSONPath=`.status.currentDisruptions`
 
 // ApplicationDisruptionBudget is the Schema for the applicationdisruptionbudgets API
 type ApplicationDisruptionBudget struct {
