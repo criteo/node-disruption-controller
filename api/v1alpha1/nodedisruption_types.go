@@ -29,6 +29,7 @@ type NamespacedName struct {
 	Name      string `json:"name"`
 }
 
+// +kubebuilder:validation:Enum="pending";"granted";"rejected"
 type NodeDisruptionState string
 
 const (
