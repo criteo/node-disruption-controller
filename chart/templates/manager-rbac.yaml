@@ -6,6 +6,17 @@ metadata:
   {{- include "chart.labels" . | nindent 4 }}
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - nodes
+  - persistentvolumeclaims
+  - persistentvolumes
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - nodedisruption.criteo.com
   resources:
   - applicationdisruptionbudgets
