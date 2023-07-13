@@ -88,6 +88,10 @@ spec:
               state:
                 default: pending
                 description: Disruption status
+                enum:
+                - pending
+                - granted
+                - rejected
                 type: string
             required:
             - state
