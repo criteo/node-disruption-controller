@@ -12,10 +12,16 @@ spec:
     kind: NodeDisruption
     listKind: NodeDisruptionList
     plural: nodedisruptions
+    shortNames:
+    - nd
     singular: nodedisruption
-  scope: Namespaced
+  scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.state
+      name: State
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: NodeDisruption is the Schema for the nodedisruptions API
@@ -79,6 +85,16 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              state:
+                default: pending
+                description: Disruption status
+                enum:
+                - pending
+                - granted
+                - rejected
+                type: string
+            required:
+            - state
             type: object
           status:
             description: NodeDisruptionStatus defines the observed state of NodeDisruption
@@ -105,9 +121,6 @@ spec:
                 items:
                   type: string
                 type: array
-            required:
-            - disruptedADB
-            - disruptedNodes
             type: object
         type: object
     served: true
