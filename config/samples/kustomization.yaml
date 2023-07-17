@@ -2,4 +2,5 @@
 resources:
 - nodedisruption_v1alpha1_nodedisruption.yaml
 - nodedisruption_v1alpha1_applicationdisruptionbudget.yaml
+- nodedisruption_v1alpha1_nodedisruptionbudget.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

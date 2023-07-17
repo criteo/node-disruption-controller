@@ -28,16 +28,16 @@ type ApplicationDisruptionBudgetSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// A NodeDisruption is allowed if at most "maxUnavailable" nodes selected by selectors are unavailable after the disruption.
-	MaxUnavailable int `json:"maxUnavailable"`
+	// A NodeDisruption is allowed if at most "maxDisruptions" nodes selected by selectors are unavailable after the disruption.
+	MaxDisruptions int `json:"maxDisruptions"`
 	// PodSelector query over pods whose nodes are managed by the disruption budget.
 	PodSelector metav1.LabelSelector `json:"podSelector,omitempty"`
 	// PVCSelector query over PVCs whose nodes are managed by the disruption budget.
 	PVCSelector metav1.LabelSelector `json:"pvcSelector,omitempty"`
 }
 
-// ApplicationDisruptionBudgetStatus defines the observed state of ApplicationDisruptionBudget
-type ApplicationDisruptionBudgetStatus struct {
+// DisruptionBudgetStatus defines the observed state of ApplicationDisruptionBudget
+type DisruptionBudgetStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
@@ -58,7 +58,7 @@ type ApplicationDisruptionBudgetStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:shortName=adb
-//+kubebuilder:printcolumn:name="Max Unavailable",type=integer,JSONPath=`.spec.maxUnavailable`
+//+kubebuilder:printcolumn:name="Max Unavailable",type=integer,JSONPath=`.spec.maxDisruptions`
 //+kubebuilder:printcolumn:name="Disruptions Allowed",type=integer,JSONPath=`.status.disruptionsAllowed`
 //+kubebuilder:printcolumn:name="Current Disruptions",type=integer,JSONPath=`.status.currentDisruptions`
 
@@ -67,8 +67,8 @@ type ApplicationDisruptionBudget struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ApplicationDisruptionBudgetSpec   `json:"spec,omitempty"`
-	Status ApplicationDisruptionBudgetStatus `json:"status,omitempty"`
+	Spec   ApplicationDisruptionBudgetSpec `json:"spec,omitempty"`
+	Status DisruptionBudgetStatus          `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true

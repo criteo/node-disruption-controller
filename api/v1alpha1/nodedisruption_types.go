@@ -58,6 +58,8 @@ type NodeDisruptionStatus struct {
 
 	// List of all the ApplicationDisruptionBudget that are disrupted by this NodeDisruption
 	DisruptedADB []NamespacedName `json:"disruptedADB,omitempty"`
+	// List of all the NodeDisruptionBudget that are disrupted by this NodeDisruption
+	DisruptedNDB []NamespacedName `json:"disruptedNDB,omitempty"`
 	// List of all the nodes that are disrupted by this NodeDisruption
 	DisruptedNodes []string `json:"disruptedNodes,omitempty"`
 }

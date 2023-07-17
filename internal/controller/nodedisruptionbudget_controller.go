@@ -18,51 +18,48 @@ package controller
 
 import (
 	"context"
-	"fmt"
+	"math"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
-
 	"github.com/golang-collections/collections/set"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// ApplicationDisruptionBudgetReconciler reconciles a ApplicationDisruptionBudget object
-type ApplicationDisruptionBudgetReconciler struct {
+// NodeDisruptionBudgetReconciler reconciles a NodeDisruptionBudget object
+type NodeDisruptionBudgetReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=nodedisruption.criteo.com,resources=applicationdisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=nodedisruption.criteo.com,resources=applicationdisruptionbudgets/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=nodedisruption.criteo.com,resources=applicationdisruptionbudgets/finalizers,verbs=update
-
-//+kubebuilder:rbac:groups="",resources=pods;persistentvolumeclaims;persistentvolumes;nodes,verbs=get;list;watch
+//+kubebuilder:rbac:groups=nodedisruption.criteo.com,resources=nodedisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=nodedisruption.criteo.com,resources=nodedisruptionbudgets/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=nodedisruption.criteo.com,resources=nodedisruptionbudgets/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the ApplicationDisruptionBudget object against the actual cluster state, and then
+// the NodeDisruptionBudget object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
-func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
-	err := r.Client.Get(ctx, req.NamespacedName, adb)
+func (r *NodeDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	ndb := &nodedisruptionv1alpha1.NodeDisruptionBudget{}
+	err := r.Client.Get(ctx, req.NamespacedName, ndb)
 
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	resolver := ApplicationDisruptionBudgetResolver{
-		ApplicationDisruptionBudget: adb,
-		Client:                      r.Client,
+	resolver := NodeDisruptionBudgetResolver{
+		NodeDisruptionBudget: ndb,
+		Client:               r.Client,
 	}
 
 	node_names, err := resolver.ResolveNodes(ctx)
@@ -83,11 +80,13 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 		return ctrl.Result{}, err
 	}
 
-	adb.Status.WatchedNodes = nodes
-	adb.Status.CurrentDisruptions = disruption_nr
-	adb.Status.DisruptionsAllowed = adb.Spec.MaxDisruptions - disruption_nr
+	ndb.Status.WatchedNodes = nodes
+	ndb.Status.CurrentDisruptions = disruption_nr
+	disruptions_for_max := ndb.Spec.MaxDisruptedNodes - disruption_nr
+	disruptions_for_min := (len(nodes) - disruption_nr) - ndb.Spec.MinUndisruptedNodes
+	ndb.Status.DisruptionsAllowed = int(math.Min(float64(disruptions_for_max), float64(disruptions_for_min))) - disruption_nr
 
-	err = r.Status().Update(ctx, adb, []client.SubResourceUpdateOption{}...)
+	err = r.Status().Update(ctx, ndb, []client.SubResourceUpdateOption{}...)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -96,21 +95,21 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ApplicationDisruptionBudgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *NodeDisruptionBudgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&nodedisruptionv1alpha1.ApplicationDisruptionBudget{}).
+		For(&nodedisruptionv1alpha1.NodeDisruptionBudget{}).
 		Complete(r)
 }
 
-type ApplicationDisruptionBudgetResolver struct {
-	ApplicationDisruptionBudget *nodedisruptionv1alpha1.ApplicationDisruptionBudget
-	Client                      client.Client
+type NodeDisruptionBudgetResolver struct {
+	NodeDisruptionBudget *nodedisruptionv1alpha1.NodeDisruptionBudget
+	Client               client.Client
 }
 
-func (adbr *ApplicationDisruptionBudgetResolver) ResolveNodes(ctx context.Context) (*set.Set, error) {
+func (ndbr *NodeDisruptionBudgetResolver) ResolveNodes(ctx context.Context) (*set.Set, error) {
 	node_names := set.New()
 
-	nodes_from_pods, err := adbr.ResolveFromPodSelector(ctx)
+	nodes_from_pods, err := ndbr.ResolveFromNodeSelector(ctx)
 	if err != nil {
 		return node_names, err
 	}
@@ -118,30 +117,29 @@ func (adbr *ApplicationDisruptionBudgetResolver) ResolveNodes(ctx context.Contex
 	return nodes_from_pods, nil
 }
 
-func (adbr *ApplicationDisruptionBudgetResolver) ResolveFromPodSelector(ctx context.Context) (*set.Set, error) {
+func (ndbr *NodeDisruptionBudgetResolver) ResolveFromNodeSelector(ctx context.Context) (*set.Set, error) {
 	node_names := set.New()
-	selector, err := metav1.LabelSelectorAsSelector(&adbr.ApplicationDisruptionBudget.Spec.PodSelector)
+	selector, err := metav1.LabelSelectorAsSelector(&ndbr.NodeDisruptionBudget.Spec.NodeSelector)
 	if err != nil || selector.Empty() {
 		return node_names, err
 	}
 	opts := []client.ListOption{
-		client.InNamespace(adbr.ApplicationDisruptionBudget.Namespace),
 		client.MatchingLabelsSelector{Selector: selector},
 	}
-	pods := &corev1.PodList{}
-	err = adbr.Client.List(ctx, pods, opts...)
+	nodes := &corev1.NodeList{}
+	err = ndbr.Client.List(ctx, nodes, opts...)
 	if err != nil {
 		return node_names, err
 	}
 
-	for _, pod := range pods.Items {
-		node_names.Insert(pod.Spec.NodeName)
+	for _, node := range nodes.Items {
+		node_names.Insert(node.ObjectMeta.Name)
 	}
 	return node_names, nil
 }
 
-func (adbr *ApplicationDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (int, error) {
-	selected_nodes, err := adbr.ResolveNodes(ctx)
+func (ndbr *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (int, error) {
+	selected_nodes, err := ndbr.ResolveNodes(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -151,7 +149,7 @@ func (adbr *ApplicationDisruptionBudgetResolver) ResolveDisruption(ctx context.C
 	opts := []client.ListOption{}
 	node_disruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
 
-	err = adbr.Client.List(ctx, node_disruptions, opts...)
+	err = ndbr.Client.List(ctx, node_disruptions, opts...)
 	if err != nil {
 		return 0, err
 	}
@@ -162,7 +160,7 @@ func (adbr *ApplicationDisruptionBudgetResolver) ResolveDisruption(ctx context.C
 		}
 		node_disruption_resolver := NodeDisruptionResolver{
 			NodeDisruption: &nd,
-			Client:         adbr.Client,
+			Client:         ndbr.Client,
 		}
 		disrupted_nodes, err := node_disruption_resolver.ResolveNodes(ctx)
 		if err != nil {
@@ -176,8 +174,8 @@ func (adbr *ApplicationDisruptionBudgetResolver) ResolveDisruption(ctx context.C
 }
 
 // AllowDisruption will be true if the NDB was impacted, Allowed will be true if NDB allow one more disruption
-func (adbr *ApplicationDisruptionBudgetResolver) AllowDisruption(ctx context.Context, nodes *set.Set) (disrupted, allowed bool, err error) {
-	selected_nodes, err := adbr.ResolveNodes(ctx)
+func (ndbr *NodeDisruptionBudgetResolver) AllowDisruption(ctx context.Context, nodes *set.Set) (disrupted, allowed bool, err error) {
+	selected_nodes, err := ndbr.ResolveNodes(ctx)
 	if err != nil {
 		return false, false, err
 	}
@@ -185,13 +183,16 @@ func (adbr *ApplicationDisruptionBudgetResolver) AllowDisruption(ctx context.Con
 		return false, false, nil
 	}
 
-	disruption, err := adbr.ResolveDisruption(ctx)
+	disruption_nr, err := ndbr.ResolveDisruption(ctx)
 	if err != nil {
 		return true, false, err
 	}
 
-	fmt.Println(disruption, adbr.ApplicationDisruptionBudget.Spec.MaxDisruptions)
-	if disruption+1 > adbr.ApplicationDisruptionBudget.Spec.MaxDisruptions {
+	disruptions_for_max := ndbr.NodeDisruptionBudget.Spec.MaxDisruptedNodes - disruption_nr
+	disruptions_for_min := (selected_nodes.Len() - disruption_nr) - ndbr.NodeDisruptionBudget.Spec.MinUndisruptedNodes
+	disruption_allowed := int(math.Min(float64(disruptions_for_max), float64(disruptions_for_min))) - disruption_nr
+
+	if disruption_nr+1 > disruption_allowed {
 		return true, false, nil
 	}
 	return true, true, nil
