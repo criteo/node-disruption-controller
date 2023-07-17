@@ -116,6 +116,22 @@ spec:
                   - namespace
                   type: object
                 type: array
+              disruptedNDB:
+                description: List of all the NodeDisruptionBudget that are disrupted
+                  by this NodeDisruption
+                items:
+                  description: This is the same as types.NamespacedName but serialisable
+                    to JSON
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                  required:
+                  - name
+                  - namespace
+                  type: object
+                type: array
               disruptedNodes:
                 description: List of all the nodes that are disrupted by this NodeDisruption
                 items:

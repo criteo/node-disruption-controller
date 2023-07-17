@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/created-by: node-disruption-controller
   name: applicationdisruptionbudget-sample
 spec:
-  maxUnavailable: 1
+  maxDisruptions: 1
   podSelector: # Select pods to protect by the budget
     matchLabels:
       app: nginx

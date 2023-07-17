@@ -1,0 +1,27 @@
+# permissions for end users to view nodedisruptionbudgets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: nodedisruptionbudget-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: node-disruption-controller
+    app.kubernetes.io/part-of: node-disruption-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: nodedisruptionbudget-viewer-role
+rules:
+- apiGroups:
+  - nodedisruption.criteo.com
+  resources:
+  - nodedisruptionbudgets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - nodedisruption.criteo.com
+  resources:
+  - nodedisruptionbudgets/status
+  verbs:
+  - get

@@ -1,0 +1,16 @@
+apiVersion: nodedisruption.criteo.com/v1alpha1
+kind: NodeDisruptionBudget
+metadata:
+  labels:
+    app.kubernetes.io/name: nodedisruptionbudget
+    app.kubernetes.io/instance: nodedisruptionbudget-sample
+    app.kubernetes.io/part-of: node-disruption-controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: node-disruption-controller
+  name: nodedisruptionbudget-sample
+spec:
+  maxDisruptedNodes: 1
+  minUndisruptedNodes: 10
+  nodeSelector:  # Select Nodes to protect by the budget
+    matchLabels:
+      kubernetes.io/os: linux  # e.g. protect all linux nodes

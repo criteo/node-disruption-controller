@@ -18,7 +18,7 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.maxUnavailable
+    - jsonPath: .spec.maxDisruptions
       name: Max Unavailable
       type: integer
     - jsonPath: .status.disruptionsAllowed
@@ -49,8 +49,8 @@ spec:
             description: ApplicationDisruptionBudgetSpec defines the desired state of
               ApplicationDisruptionBudget
             properties:
-              maxUnavailable:
-                description: A NodeDisruption is allowed if at most "maxUnavailable"
+              maxDisruptions:
+                description: A NodeDisruption is allowed if at most "maxDisruptions"
                   nodes selected by selectors are unavailable after the disruption.
                 type: integer
               podSelector:
@@ -144,11 +144,10 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
             required:
-            - maxUnavailable
+            - maxDisruptions
             type: object
           status:
-            description: ApplicationDisruptionBudgetStatus defines the observed state
-              of ApplicationDisruptionBudget
+            description: DisruptionBudgetStatus defines the observed state of ApplicationDisruptionBudget
             properties:
               currentDisruptions:
                 default: 0

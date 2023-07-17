@@ -73,19 +73,21 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	opts := []client.ListOption{}
-	node_disruption_budgets := &nodedisruptionv1alpha1.ApplicationDisruptionBudgetList{}
+	all_allowed := true
+	reject_reason := ""
 
-	err = r.Client.List(ctx, node_disruption_budgets, opts...)
+	// TODO: refactor this whole part once the interface is properly defined
+	// Check ADB
+	opts := []client.ListOption{}
+	application_disruption_budgets := &nodedisruptionv1alpha1.ApplicationDisruptionBudgetList{}
+
+	err = r.Client.List(ctx, application_disruption_budgets, opts...)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	disrupted_adb := []nodedisruptionv1alpha1.NamespacedName{}
-	all_allowed := true
-	reject_reason := ""
-
-	for _, adb := range node_disruption_budgets.Items {
+	for _, adb := range application_disruption_budgets.Items {
 		adb_resolver := ApplicationDisruptionBudgetResolver{
 			ApplicationDisruptionBudget: &adb,
 			Client:                      r.Client,
@@ -105,6 +107,35 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
+	// Check NDB
+	node_disruption_budgets := &nodedisruptionv1alpha1.NodeDisruptionBudgetList{}
+
+	err = r.Client.List(ctx, node_disruption_budgets, opts...)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	disrupted_ndb := []nodedisruptionv1alpha1.NamespacedName{}
+	for _, ndb := range node_disruption_budgets.Items {
+		ndb_resolver := NodeDisruptionBudgetResolver{
+			NodeDisruptionBudget: &ndb,
+			Client:               r.Client,
+		}
+		impacted, allowed, err := ndb_resolver.AllowDisruption(ctx, nodes)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if impacted {
+			disrupted_ndb = append(disrupted_ndb, nodedisruptionv1alpha1.NamespacedName{Name: ndb.Name, Namespace: ndb.Namespace})
+
+			if !allowed {
+				all_allowed = false
+				reject_reason = fmt.Sprintf("%s (in %s) doesn't allow more disruption", ndb.Name, ndb.Namespace)
+			}
+		}
+	}
+
 	// Create a slice to store the set elements
 	disrupted_nodes := make([]string, 0, nodes.Len())
 
@@ -114,6 +145,7 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	})
 
 	nd.Status.DisruptedADB = disrupted_adb
+	nd.Status.DisruptedNDB = disrupted_ndb
 	nd.Status.DisruptedNodes = disrupted_nodes
 
 	if nd.Spec.State == nodedisruptionv1alpha1.Pending {
@@ -125,7 +157,7 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
-	err = r.Update(ctx, nd, []client.UpdateOption{}...)
+	err = r.Update(ctx, nd.DeepCopy(), []client.UpdateOption{}...)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
