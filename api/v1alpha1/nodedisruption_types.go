@@ -29,13 +29,14 @@ type NamespacedName struct {
 	Name      string `json:"name"`
 }
 
-// +kubebuilder:validation:Enum="pending";"granted";"rejected"
+// +kubebuilder:validation:Enum="pending";"granted";"rejected";"processing"
 type NodeDisruptionState string
 
 const (
-	Pending  NodeDisruptionState = "pending"
-	Granted  NodeDisruptionState = "granted"
-	Rejected NodeDisruptionState = "rejected"
+	Pending    NodeDisruptionState = "pending"
+	Processing NodeDisruptionState = "processing"
+	Granted    NodeDisruptionState = "granted"
+	Rejected   NodeDisruptionState = "rejected"
 )
 
 // NodeDisruptionSpec defines the desired state of NodeDisruption

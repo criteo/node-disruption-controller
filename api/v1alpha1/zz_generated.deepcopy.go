@@ -294,6 +294,11 @@ func (in *NodeDisruptionStatus) DeepCopyInto(out *NodeDisruptionStatus) {
 		*out = make([]NamespacedName, len(*in))
 		copy(*out, *in)
 	}
+	if in.DisruptedNDB != nil {
+		in, out := &in.DisruptedNDB, &out.DisruptedNDB
+		*out = make([]NamespacedName, len(*in))
+		copy(*out, *in)
+	}
 	if in.DisruptedNodes != nil {
 		in, out := &in.DisruptedNodes, &out.DisruptedNodes
 		*out = make([]string, len(*in))

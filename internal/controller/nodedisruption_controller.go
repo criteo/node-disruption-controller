@@ -63,6 +63,21 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	if nd.Spec.State == nodedisruptionv1alpha1.Pending {
+		nd.Spec.State = nodedisruptionv1alpha1.Processing
+		err = r.Update(ctx, nd.DeepCopy(), []client.UpdateOption{}...)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		nd := &nodedisruptionv1alpha1.NodeDisruption{}
+		err := r.Client.Get(ctx, req.NamespacedName, nd)
+
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	resolver := NodeDisruptionResolver{
 		NodeDisruption: nd,
 		Client:         r.Client,
@@ -148,7 +163,7 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	nd.Status.DisruptedNDB = disrupted_ndb
 	nd.Status.DisruptedNodes = disrupted_nodes
 
-	if nd.Spec.State == nodedisruptionv1alpha1.Pending {
+	if nd.Spec.State == nodedisruptionv1alpha1.Processing {
 		if all_allowed {
 			nd.Spec.State = nodedisruptionv1alpha1.Granted
 		} else {
