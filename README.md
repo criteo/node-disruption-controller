@@ -5,7 +5,7 @@ Kubernetes cluster.
 
 ## Description
 
-The main use case of the node disruption controller is to perform impacting maintenance.
+The main use case of the node disruption controller is to perform "impacting" maintenance on nodes.
 Typically a maintenance requires draining the pods of a node then having the node unavailble
 for a period of time (maybe forever).
 
@@ -21,12 +21,41 @@ with a PDB is that the Application Disruption Budget can:
 - Can perform a synchronous service level health check. PDB is only looking at the readiness probes
 
 
+## Components
+
+
 ### NodeDisruption
 
 The NodeDisruption represent the disruption of one or more nodes. The controller
 doesn't make any asumption on the nature of the disruption (reboot, network down).
 
+A nodeDisruption contains a selector to select the nodes impacted by the disruption
+and a state.
+
+#### State machine
+
+The controller will change the state:
+```mermaid
+stateDiagram
+    direction LR
+    [*] --> Pending
+
+    Pending --> Processing
+    Processing --> Accepted
+    Processing --> Rejected
+    Accepted --> [*]
+    Rejected --> [*]
 ```
+
+* Pending: the disruption has not been processed yet by the controller
+* Processing: the controller is processing the disruption, checking if it can be accepted or not
+* Accepted: the disruption has been accepted. the selected nodes can be disrupted. It should be
+  deleted once the disruption is over.
+* Rejected: the disruption has been rejected with a reason in the events, it can be safely deleted
+
+#### Sample object
+
+```yaml
 apiVersion: nodedisruption.criteo.com/v1alpha1
 kind: NodeDisruption
 metadata:
@@ -43,25 +72,24 @@ spec:
       kubernetes.io/hostname: fakehostname
 ```
 
-The controller will change the state: 
-                        -> accepted
-pending -> processing /
-                      \
-                        -> rejected
-
-* Pending: the disruption has not been processed yet by the controller
-* Processing: the controller is processing the disruption, checking if it can be accepted or not
-* Accepted: the disruption has been accepted. the selected nodes can be disrupted. It should be deleted once the disruption is over.
-* Rejected: the disruption has been rejected with a reason in the events, it can be safely deleted
-
 
 ### ApplicationDisruptionBudget
 
-The ApplicationDisruptionBudget provide a way to set constraints for an application
+The ApplicationDisruptionBudget provide a way to set constraints for a namespaced application
 running inside Kubernetes. It can select Pod (like PDB) but also PVC (to protect data).
 
+#### Service level healthiness
 
-```
+ApplicationDisruptionBudget aim at providing a way to expose service level healhiness to Kubernetes.
+In some cases, an application can be unhealthy even if all its pods are running.
+
+**This is not implemented yet!**
+The aim is to provide a http hook that will be called by the controller to check the healthiness before
+accepting or rejecting a disruption,
+
+#### Sample object
+
+```yaml
 apiVersion: nodedisruption.criteo.com/v1alpha1
 kind: ApplicationDisruptionBudget
 metadata:
@@ -77,6 +105,84 @@ spec:
     matchLabels:
       app: nginx
 ```
+
+### NodeDisruptionBudget
+
+The NodeDisruptionBudget the ability to limit voluntary disruptions of nodes. The main
+difference with `ApplicationDisruptionBudget` is that it is not namespaced and select
+nodes directly. It is a tool to control disruption on pool of nodes.
+
+#### Sample object
+
+```yaml
+apiVersion: nodedisruption.criteo.com/v1alpha1
+kind: NodeDisruptionBudget
+metadata:
+  labels:
+    app.kubernetes.io/name: nodedisruptionbudget
+    app.kubernetes.io/instance: nodedisruptionbudget-sample
+    app.kubernetes.io/part-of: node-disruption-controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: node-disruption-controller
+  name: nodedisruptionbudget-sample
+spec:
+  maxDisruptedNodes: 1     # How many nodes can be disrupted at the same time
+  minUndisruptedNodes: 10  # How many nodes should not be disrupted at the same time
+  nodeSelector:  # Select Nodes to protect by the budget
+    matchLabels:
+      kubernetes.io/os: linux  # e.g. protect all linux nodes
+```
+
+### Sequence diagram for NodeDisruption validation
+
+```mermaid
+sequenceDiagram
+  User->>NodeDisruption: Create NodeDisruption
+  Controller->>NodeDisruption: Reconcile NodeDisruption
+  Controller->>NodeDisruption: Set NodeDisruption as `processing`
+  Controller->>NodeDisruptionBudget\nApplicationBudget: Check if all impacted budget can\ntolerate one more disruption
+  Controller->>NodeDisruption: Set NodeDisruption as `accepted`
+  User->>NodeDisruption: Poll NodeDisruption
+  Controller->>NodeDisruptionBudget\nApplicationBudget: Update status
+  NodeDisruption-->>User: NodeDisruption is `accepted`
+  Note over User: Perform impacting operation on node
+  User->>NodeDisruption: Delete NodeDisruption
+  Note over Controller: Eventually
+  Controller->>NodeDisruptionBudget\nApplicationBudget: Update status
+```
+
+## Example of use case
+
+### Node maintenance system
+
+TeamK is responsible for Kubernetes itself.
+TeamD is operating databases on top of the Kubernetes cluster. The database is a stateful workload
+running using local persistent storage.
+
+TeamK wants to perform maintenance of the nodes (upgrading OS, Kubelet... etc) that requires a reboot of the nodes.
+TeamD wants its service to be highly available and avoid dataloss.
+
+TeamK and TeamD can use the node-disruption-controller as an interface to perform as safe as it can
+be maintenances.
+
+TeamD will create an ApplicationDisruptionBudget for each of its database clusters. It will watch
+for disruption on the nodes linked to its Pods and PVCs.
+
+TeamK can create a NodeDisruptionBudget to protect the number of concurrent NodeDisruption on pool
+of nodes. 
+
+TeamK, before doing a maintenance of a node will create a NodeDisruption. The controller will check
+wich budgets are impacted by the disruption and check if they can tolerate one more disruption.
+If not, the NodeDisruption will be rejected. TeamK will have to retry creating a NodeDisruption
+later.
+If it is accepted, TeamK can disrupt the node. In this case, the disruption will be the drain and
+reboot of the Node in question.
+
+### Node autoscaling system
+
+The same features can apply to a Node autoscaling system that needs safely scale down a Kubernetes cluster.
+Let's say the system wants to remove 10 nodes from a Kubernetes cluster. It can select nodes randomly, try to create a NodeDisruption, if it is accepted, the node can be drained and removed. If it's rejected, the system
+can try another node or try later. The budgets ensure that all the drains and node removals are safe.
 
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
