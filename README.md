@@ -1,22 +1,21 @@
 # node-disruption-controller
 
-Node-disruption-controller is a, as it name implies, a way to control node disruption in a
-Kubernetes cluster.
+Node-disruption-controller is a way to control node disruptions in a Kubernetes cluster.
 
 ## Description
 
 The main use case of the node disruption controller is to perform "impacting" maintenance on nodes.
-Typically a maintenance requires draining the pods of a node then having the node unavailble
+Typically a maintenance requires draining the pods of a node then having the node unavailable
 for a period of time (maybe forever).
 
 The system is build around a contract: before doing anything on a node, a node disruption
 need to be accepted for the node.
 
-The controller is reponsible for accepting node disruption. It does that by looking at
-contraints provided by the disruptions bugdets. The application disruption budget serve to
-reprensent the constraints of an application running on top of Kubernetes. The main difference
+The controller is responsible for accepting node disruption. It does that by looking at
+constraints provided by the disruptions budgets. The application disruption budget serve to
+represent the constraints of an application running on top of Kubernetes. The main difference
 with a PDB is that the Application Disruption Budget can:
-- Target PVC, to prevent maintenance even when no pods running. This is useful when relying
+- Target PVC, to prevent maintenance even when no pods are running. This is useful when relying
   on local storage.
 - Can perform a synchronous service level health check. PDB is only looking at the readiness probes
 
@@ -26,8 +25,8 @@ with a PDB is that the Application Disruption Budget can:
 
 ### NodeDisruption
 
-The NodeDisruption represent the disruption of one or more nodes. The controller
-doesn't make any asumption on the nature of the disruption (reboot, network down).
+The NodeDisruption represents the disruption of one or more nodes. The controller
+doesn't make any assumption on the nature of the disruption (reboot, network down).
 
 A nodeDisruption contains a selector to select the nodes impacted by the disruption
 and a state.
@@ -80,7 +79,7 @@ running inside Kubernetes. It can select Pod (like PDB) but also PVC (to protect
 
 #### Service level healthiness
 
-ApplicationDisruptionBudget aim at providing a way to expose service level healhiness to Kubernetes.
+ApplicationDisruptionBudget aims at providing a way to expose service level healthiness to Kubernetes.
 In some cases, an application can be unhealthy even if all its pods are running.
 
 **This is not implemented yet!**
@@ -110,7 +109,7 @@ spec:
 
 The NodeDisruptionBudget the ability to limit voluntary disruptions of nodes. The main
 difference with `ApplicationDisruptionBudget` is that it is not namespaced and select
-nodes directly. It is a tool to control disruption on pool of nodes.
+nodes directly. It is a tool to control disruption on a pool of nodes.
 
 #### Sample object
 
@@ -160,16 +159,15 @@ TeamD is operating databases on top of the Kubernetes cluster. The database is a
 running using local persistent storage.
 
 TeamK wants to perform maintenance of the nodes (upgrading OS, Kubelet... etc) that requires a reboot of the nodes.
-TeamD wants its service to be highly available and avoid dataloss.
+TeamD wants its service to be highly available and avoid data loss.
 
-TeamK and TeamD can use the node-disruption-controller as an interface to perform as safe as it can
-be maintenances.
+TeamK and TeamD can use the node-disruption-controller as an interface to perform as safe as it can be maintenances.
 
 TeamD will create an ApplicationDisruptionBudget for each of its database clusters. It will watch
 for disruption on the nodes linked to its Pods and PVCs.
 
 TeamK can create a NodeDisruptionBudget to protect the number of concurrent NodeDisruption on pool
-of nodes. 
+of nodes.
 
 TeamK, before doing a maintenance of a node will create a NodeDisruption. The controller will check
 wich budgets are impacted by the disruption and check if they can tolerate one more disruption.
@@ -264,11 +262,10 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-
