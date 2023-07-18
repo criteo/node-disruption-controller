@@ -92,6 +92,7 @@ spec:
                 - pending
                 - granted
                 - rejected
+                - processing
                 type: string
             required:
             - state

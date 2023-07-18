@@ -1,8 +1,25 @@
 # node-disruption-controller
-// TODO(user): Add simple overview of use/purpose
+
+Node-disruption-controller is a, as it name implies, a way to control node disruption in a
+Kubernetes cluster.
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+
+The main use case of the node disruption controller is to perform impacting maintenance.
+Typically a maintenance requires draining the pods of a node then having the node unavailble
+for a period of time (maybe forever).
+
+The system is build around a contract: before doing anything on a node, a node disruption
+need to be accepted for the node.
+
+The controller is reponsible for accepting node disruption. It does that by looking at
+contraints provided by the disruptions bugdets. The application disruption budget serve to
+reprensent the constraints of an application running on top of Kubernetes. The main difference
+with a PDB is that the Application Disruption Budget can:
+- Target PVC, to prevent maintenance even when no pods running. This is useful when relying
+  on local storage.
+- Can perform a synchronous service level health check. PDB is only looking at the readiness probes
+
 
 ### NodeDisruption
 
@@ -25,6 +42,18 @@ spec:
     matchLabels:
       kubernetes.io/hostname: fakehostname
 ```
+
+The controller will change the state: 
+                        -> accepted
+pending -> processing /
+                      \
+                        -> rejected
+
+* Pending: the disruption has not been processed yet by the controller
+* Processing: the controller is processing the disruption, checking if it can be accepted or not
+* Accepted: the disruption has been accepted. the selected nodes can be disrupted. It should be deleted once the disruption is over.
+* Rejected: the disruption has been rejected with a reason in the events, it can be safely deleted
+
 
 ### ApplicationDisruptionBudget
 
