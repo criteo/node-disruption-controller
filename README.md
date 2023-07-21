@@ -82,6 +82,18 @@ running inside Kubernetes. It can select Pod (like PDB) but also PVC (to protect
 ApplicationDisruptionBudget aims at providing a way to expose service level healthiness to Kubernetes.
 In some cases, an application can be unhealthy even if all its pods are running.
 
+You can select Pods and/or PVCs. 
+
+
+##### PVC selector
+
+The main reason of using a PVC selector is to ensure that node that contains data don't enter maintenance
+in the event of pods not running on node.
+
+The PVC selector only make sense if you are using local storage and PV have a nodeAffinity that is set.
+
+##### Application level healthcheck
+
 **This is not implemented yet!**
 The aim is to provide a http hook that will be called by the controller to check the healthiness before
 accepting or rejecting a disruption,
@@ -101,6 +113,9 @@ metadata:
   name: applicationdisruptionbudget-sample
 spec:
   podSelector: # Select pods to protect by the budget
+    matchLabels:
+      app: nginx
+  pvcSelect: # Select PVCs to protect by the budget
     matchLabels:
       app: nginx
 ```
