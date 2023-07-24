@@ -94,9 +94,14 @@ The PVC selector only make sense if you are using local storage and PV have a no
 
 ##### Application level healthcheck
 
-**This is not implemented yet!**
-The aim is to provide a http hook that will be called by the controller to check the healthiness before
-accepting or rejecting a disruption,
+It is possible to configure an healthiness URL for a service. If the budget authorize one more disruption
+the endpoint will be called: if the status code is different 2XX, the disruption will be rejected.
+
+This has 2 purposes:
+- Making sure the controller taking care of the application is alive
+- The global state of the application is healthy
+
+It is not a replacement for readiness probes but a complement
 
 #### Sample object
 
@@ -112,12 +117,13 @@ metadata:
     app.kubernetes.io/created-by: node-disruption-controller
   name: applicationdisruptionbudget-sample
 spec:
-  podSelector: # Select pods to protect by the budget
+  podSelector: # Optional: Select pods to protect by the budget
     matchLabels:
       app: nginx
-  pvcSelect: # Select PVCs to protect by the budget
+  pvcSelect: # Optional: Select PVCs to protect by the budget
     matchLabels:
       app: nginx
+  healthURL: http://someurl/health # Optional URL to call before granting a disruption
 ```
 
 ### NodeDisruptionBudget

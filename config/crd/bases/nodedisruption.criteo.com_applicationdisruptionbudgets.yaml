@@ -48,6 +48,11 @@ spec:
             description: ApplicationDisruptionBudgetSpec defines the desired state
               of ApplicationDisruptionBudget
             properties:
+              healthURL:
+                description: Health URL is an optional URL to call to validate the
+                  state of the application. Maintenance will proceed only if the endpoint
+                  responds 2XX.
+                type: string
               maxDisruptions:
                 description: A NodeDisruption is allowed if at most "maxDisruptions"
                   nodes selected by selectors are unavailable after the disruption.

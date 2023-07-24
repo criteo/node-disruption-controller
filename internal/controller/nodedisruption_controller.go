@@ -118,7 +118,14 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			if !allowed {
 				all_allowed = false
 				reject_reason = fmt.Sprintf("%s (in %s) doesn't allow more disruption", adb.Name, adb.Namespace)
+				break
 			}
+		}
+		err = adb_resolver.HealthCheck(ctx, *nd)
+		if err != nil {
+			all_allowed = false
+			reject_reason = fmt.Sprintf("%s (in %s) is unhealthy: %s", adb.Name, adb.Namespace, err)
+			break
 		}
 	}
 
@@ -147,6 +154,7 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			if !allowed {
 				all_allowed = false
 				reject_reason = fmt.Sprintf("%s (in %s) doesn't allow more disruption", ndb.Name, ndb.Namespace)
+				break
 			}
 		}
 	}
