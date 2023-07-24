@@ -19,6 +19,9 @@ package controller
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/fields"
@@ -330,4 +333,27 @@ func (adbr *ApplicationDisruptionBudgetResolver) AllowDisruption(ctx context.Con
 		return true, false, nil
 	}
 	return true, true, nil
+}
+
+// HealthCheck call ADB's URL if it exists and return an error if the call returns not a 2XX staus code
+func (adbr *ApplicationDisruptionBudgetResolver) HealthCheck(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption) (err error) {
+	if adbr.ApplicationDisruptionBudget.Spec.HealthURL == nil {
+		return nil
+	}
+	resp, err := http.Get(*adbr.ApplicationDisruptionBudget.Spec.HealthURL)
+	if err != nil {
+		log.Fatalln(err)
+		return err
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	} else {
+		return fmt.Errorf("http server responded with non 2XX status code: %s", string(body))
+	}
 }

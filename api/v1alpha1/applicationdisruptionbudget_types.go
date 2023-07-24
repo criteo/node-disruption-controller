@@ -34,6 +34,10 @@ type ApplicationDisruptionBudgetSpec struct {
 	PodSelector metav1.LabelSelector `json:"podSelector,omitempty"`
 	// PVCSelector query over PVCs whose nodes are managed by the disruption budget.
 	PVCSelector metav1.LabelSelector `json:"pvcSelector,omitempty"`
+	// Health URL is an optional URL to call to validate the state of the application.
+	// Maintenance will proceed only if the endpoint responds 2XX.
+	// +kubebuilder:validation:Optional
+	HealthURL *string `json:"healthURL,omitempty"`
 }
 
 // DisruptionBudgetStatus defines the observed state of ApplicationDisruptionBudget
