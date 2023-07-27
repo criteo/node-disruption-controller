@@ -27,6 +27,7 @@ import (
 type NamespacedName struct {
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
+	Kind      string `json:"kind"`
 }
 
 // +kubebuilder:validation:Enum="pending";"granted";"rejected";"processing"
@@ -46,7 +47,6 @@ type NodeDisruptionSpec struct {
 
 	// Label query over nodes that will be impacted by the disruption
 	NodeSelector metav1.LabelSelector `json:"nodeSelector,omitempty"`
-
 	// +kubebuilder:default="pending"
 	// Disruption status
 	State NodeDisruptionState `json:"state"`
@@ -57,12 +57,16 @@ type NodeDisruptionStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// List of all the ApplicationDisruptionBudget that are disrupted by this NodeDisruption
-	DisruptedADB []NamespacedName `json:"disruptedADB,omitempty"`
-	// List of all the NodeDisruptionBudget that are disrupted by this NodeDisruption
-	DisruptedNDB []NamespacedName `json:"disruptedNDB,omitempty"`
+	// List of all the budgets disrupted by the NodeDisruption
+	DisruptedDisruptionBudgets []DisruptedBudgetStatus `json:"disruptedDisruptionBudgets,omitempty"`
 	// List of all the nodes that are disrupted by this NodeDisruption
 	DisruptedNodes []string `json:"disruptedNodes,omitempty"`
+}
+
+type DisruptedBudgetStatus struct {
+	Reference NamespacedName `json:"reference,omitempty"`
+	Reason    string         `json:"reason,omitempty"`
+	Ok        bool           `json:"ok,omitempty"`
 }
 
 //+kubebuilder:object:root=true

@@ -62,35 +62,12 @@ func (r *NodeDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl
 		Client:               r.Client,
 	}
 
-	node_names, err := resolver.ResolveNodes(ctx)
+	err = resolver.Sync(ctx)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// Create a slice to store the set elements
-	nodes := make([]string, 0, node_names.Len())
-
-	// Iterate over the set and append elements to the slice
-	node_names.Do(func(item interface{}) {
-		nodes = append(nodes, item.(string))
-	})
-
-	disruption_nr, err := resolver.ResolveDisruption(ctx)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	ndb.Status.WatchedNodes = nodes
-	ndb.Status.CurrentDisruptions = disruption_nr
-	disruptions_for_max := ndb.Spec.MaxDisruptedNodes - disruption_nr
-	disruptions_for_min := (len(nodes) - disruption_nr) - ndb.Spec.MinUndisruptedNodes
-	ndb.Status.DisruptionsAllowed = int(math.Min(float64(disruptions_for_max), float64(disruptions_for_min))) - disruption_nr
-
-	err = r.Status().Update(ctx, ndb, []client.SubResourceUpdateOption{}...)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
+	err = resolver.UpdateStatus(ctx)
 	return ctrl.Result{}, nil
 }
 
@@ -104,6 +81,64 @@ func (r *NodeDisruptionBudgetReconciler) SetupWithManager(mgr ctrl.Manager) erro
 type NodeDisruptionBudgetResolver struct {
 	NodeDisruptionBudget *nodedisruptionv1alpha1.NodeDisruptionBudget
 	Client               client.Client
+}
+
+// Sync ensure the budget's status is up to date
+func (r *NodeDisruptionBudgetResolver) Sync(ctx context.Context) error {
+	node_names, err := r.ResolveNodes(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Create a slice to store the set elements
+	nodes := make([]string, 0, node_names.Len())
+
+	// Iterate over the set and append elements to the slice
+	node_names.Do(func(item interface{}) {
+		nodes = append(nodes, item.(string))
+	})
+
+	disruption_nr, err := r.ResolveDisruption(ctx)
+	if err != nil {
+		return err
+	}
+
+	r.NodeDisruptionBudget.Status.WatchedNodes = nodes
+	r.NodeDisruptionBudget.Status.CurrentDisruptions = disruption_nr
+	disruptions_for_max := r.NodeDisruptionBudget.Spec.MaxDisruptedNodes - disruption_nr
+	disruptions_for_min := (len(nodes) - disruption_nr) - r.NodeDisruptionBudget.Spec.MinUndisruptedNodes
+	r.NodeDisruptionBudget.Status.DisruptionsAllowed = int(math.Min(float64(disruptions_for_max), float64(disruptions_for_min))) - disruption_nr
+
+	return nil
+}
+
+// Check if the budget would be impacted by an operation on the provided set of nodes
+func (r *NodeDisruptionBudgetResolver) IsImpacted(nd NodeDisruption) bool {
+	watched_nodes := NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes)
+	return watched_nodes.Intersection(nd.ImpactedNodes).Len() > 0
+}
+
+// Return the number of disruption allowed considering a list of current node disruptions
+func (r *NodeDisruptionBudgetResolver) TolerateDisruption(disrupted_nodes NodeDisruption) bool {
+	disrupted_nr := NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes).Intersection(disrupted_nodes.ImpactedNodes).Len()
+	return r.NodeDisruptionBudget.Status.DisruptionsAllowed-disrupted_nr < 0
+}
+
+// NodeDisruption CheckHealth is always true
+func (r *NodeDisruptionBudgetResolver) CheckHealth(context.Context) error {
+	return nil
+}
+
+func (r *NodeDisruptionBudgetResolver) UpdateStatus(ctx context.Context) error {
+	return r.Client.Status().Update(ctx, r.NodeDisruptionBudget.DeepCopy(), []client.SubResourceUpdateOption{}...)
+}
+
+func (r *NodeDisruptionBudgetResolver) GetNamespacedName() nodedisruptionv1alpha1.NamespacedName {
+	return nodedisruptionv1alpha1.NamespacedName{
+		Namespace: r.NodeDisruptionBudget.Namespace,
+		Name:      r.NodeDisruptionBudget.Name,
+		Kind:      r.NodeDisruptionBudget.Kind,
+	}
 }
 
 func (ndbr *NodeDisruptionBudgetResolver) ResolveNodes(ctx context.Context) (*set.Set, error) {
@@ -162,11 +197,12 @@ func (ndbr *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context)
 			NodeDisruption: &nd,
 			Client:         ndbr.Client,
 		}
-		disrupted_nodes, err := node_disruption_resolver.ResolveNodes(ctx)
+
+		disruption, err := node_disruption_resolver.GetDisruption(ctx)
 		if err != nil {
 			return 0, err
 		}
-		if selected_nodes.Intersection(disrupted_nodes).Len() > 0 {
+		if selected_nodes.Intersection(disruption.ImpactedNodes).Len() > 0 {
 			disruptions += 1
 		}
 	}

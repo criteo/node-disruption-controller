@@ -63,6 +63,7 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	// TODO: check to see if another one is marked in progress
 	if nd.Spec.State == nodedisruptionv1alpha1.Pending {
 		nd.Spec.State = nodedisruptionv1alpha1.Processing
 		err = r.Update(ctx, nd.DeepCopy(), []client.UpdateOption{}...)
@@ -83,100 +84,26 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		Client:         r.Client,
 	}
 
-	nodes, err := resolver.ResolveNodes(ctx)
+	budgets, err := resolver.GetAllBudgetsInSync(ctx)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	all_allowed := true
-	reject_reason := ""
-
-	// TODO: refactor this whole part once the interface is properly defined
-	// Check ADB
-	opts := []client.ListOption{}
-	application_disruption_budgets := &nodedisruptionv1alpha1.ApplicationDisruptionBudgetList{}
-
-	err = r.Client.List(ctx, application_disruption_budgets, opts...)
+	disruption, err := resolver.GetDisruption(ctx)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	disrupted_adb := []nodedisruptionv1alpha1.NamespacedName{}
-	for _, adb := range application_disruption_budgets.Items {
-		adb_resolver := ApplicationDisruptionBudgetResolver{
-			ApplicationDisruptionBudget: &adb,
-			Client:                      r.Client,
-		}
-		impacted, allowed, err := adb_resolver.AllowDisruption(ctx, nodes)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+	any_failed, statuses := resolver.ValidateDisruption(ctx, budgets, disruption)
 
-		if impacted {
-			disrupted_adb = append(disrupted_adb, nodedisruptionv1alpha1.NamespacedName{Name: adb.Name, Namespace: adb.Namespace})
-
-			if !allowed {
-				all_allowed = false
-				reject_reason = fmt.Sprintf("%s (in %s) doesn't allow more disruption", adb.Name, adb.Namespace)
-				break
-			}
-		}
-		err = adb_resolver.HealthCheck(ctx, *nd)
-		if err != nil {
-			all_allowed = false
-			reject_reason = fmt.Sprintf("%s (in %s) is unhealthy: %s", adb.Name, adb.Namespace, err)
-			break
-		}
-	}
-
-	// Check NDB
-	node_disruption_budgets := &nodedisruptionv1alpha1.NodeDisruptionBudgetList{}
-
-	err = r.Client.List(ctx, node_disruption_budgets, opts...)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	disrupted_ndb := []nodedisruptionv1alpha1.NamespacedName{}
-	for _, ndb := range node_disruption_budgets.Items {
-		ndb_resolver := NodeDisruptionBudgetResolver{
-			NodeDisruptionBudget: &ndb,
-			Client:               r.Client,
-		}
-		impacted, allowed, err := ndb_resolver.AllowDisruption(ctx, nodes)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-
-		if impacted {
-			disrupted_ndb = append(disrupted_ndb, nodedisruptionv1alpha1.NamespacedName{Name: ndb.Name, Namespace: ndb.Namespace})
-
-			if !allowed {
-				all_allowed = false
-				reject_reason = fmt.Sprintf("%s (in %s) doesn't allow more disruption", ndb.Name, ndb.Namespace)
-				break
-			}
-		}
-	}
-
-	// Create a slice to store the set elements
-	disrupted_nodes := make([]string, 0, nodes.Len())
-
-	// Iterate over the set and append elements to the slice
-	nodes.Do(func(item interface{}) {
-		disrupted_nodes = append(disrupted_nodes, item.(string))
-	})
-
-	nd.Status.DisruptedADB = disrupted_adb
-	nd.Status.DisruptedNDB = disrupted_ndb
-	nd.Status.DisruptedNodes = disrupted_nodes
+	nd.Status.DisruptedDisruptionBudgets = statuses
+	nd.Status.DisruptedNodes = NodeSetToStringList(disruption.ImpactedNodes)
 
 	if nd.Spec.State == nodedisruptionv1alpha1.Processing {
-		if all_allowed {
+		if !any_failed {
 			nd.Spec.State = nodedisruptionv1alpha1.Granted
 		} else {
 			nd.Spec.State = nodedisruptionv1alpha1.Rejected
-			r.Recorder.Event(nd, "Normal", "Rejected", reject_reason)
 		}
 	}
 
@@ -208,11 +135,11 @@ type NodeDisruptionResolver struct {
 }
 
 // Resolve the nodes impacted by the NodeDisruption
-func (ndr *NodeDisruptionResolver) ResolveNodes(ctx context.Context) (*set.Set, error) {
+func (ndr *NodeDisruptionResolver) GetDisruption(ctx context.Context) (NodeDisruption, error) {
 	node_names := set.New()
 	selector, err := metav1.LabelSelectorAsSelector(&ndr.NodeDisruption.Spec.NodeSelector)
 	if err != nil {
-		return node_names, err
+		return NodeDisruption{}, err
 	}
 	opts := []client.ListOption{
 		client.MatchingLabelsSelector{Selector: selector},
@@ -220,11 +147,100 @@ func (ndr *NodeDisruptionResolver) ResolveNodes(ctx context.Context) (*set.Set, 
 	nodes := &corev1.NodeList{}
 	err = ndr.Client.List(ctx, nodes, opts...)
 	if err != nil {
-		return node_names, err
+		return NodeDisruption{}, err
 	}
 
 	for _, node := range nodes.Items {
 		node_names.Insert(node.Name)
 	}
-	return node_names, nil
+	return NodeDisruption{
+		ImpactedNodes: node_names,
+	}, nil
+}
+
+// GetAllBudgetsInSync fetch all the budgets from Kubernetes and synchronise them
+func (ndr *NodeDisruptionResolver) GetAllBudgetsInSync(ctx context.Context) ([]Budget, error) {
+	opts := []client.ListOption{}
+	budgets := []Budget{}
+
+	application_disruption_budgets := &nodedisruptionv1alpha1.ApplicationDisruptionBudgetList{}
+	err := ndr.Client.List(ctx, application_disruption_budgets, opts...)
+	if err != nil {
+		return budgets, err
+	}
+	for _, adb := range application_disruption_budgets.Items {
+		adb_resolver := ApplicationDisruptionBudgetResolver{
+			ApplicationDisruptionBudget: &adb,
+			Client:                      ndr.Client,
+		}
+		budgets = append(budgets, &adb_resolver)
+	}
+
+	node_disruption_budget := &nodedisruptionv1alpha1.NodeDisruptionBudgetList{}
+	err = ndr.Client.List(ctx, node_disruption_budget, opts...)
+	if err != nil {
+		return budgets, err
+	}
+	for _, ndb := range node_disruption_budget.Items {
+		ndb_resolver := NodeDisruptionBudgetResolver{
+			NodeDisruptionBudget: &ndb,
+			Client:               ndr.Client,
+		}
+		budgets = append(budgets, &ndb_resolver)
+	}
+
+	for _, budget := range budgets {
+		err := budget.Sync(ctx)
+		if err != nil {
+			return budgets, err
+		}
+	}
+
+	return budgets, nil
+}
+
+// Validate a disruption give a list of budget
+func (ndr *NodeDisruptionResolver) ValidateDisruption(ctx context.Context, budgets []Budget, nd NodeDisruption) (any_failed bool, status []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
+	any_failed = false
+
+	impacted_budgets := []Budget{}
+	for _, budget := range budgets {
+		if !budget.IsImpacted(nd) {
+			continue
+		}
+
+		if !budget.TolerateDisruption(nd) {
+			any_failed = true
+			status = append(status, nodedisruptionv1alpha1.DisruptedBudgetStatus{
+				Reference: budget.GetNamespacedName(),
+				Reason:    "No more disruption allowed",
+				Ok:        false,
+			})
+			break
+		}
+		impacted_budgets = append(impacted_budgets, budget)
+	}
+
+	if any_failed {
+		return any_failed, status
+	}
+
+	for _, budget := range impacted_budgets {
+		err := budget.CheckHealth(ctx)
+		if err != nil {
+			any_failed = true
+			status = append(status, nodedisruptionv1alpha1.DisruptedBudgetStatus{
+				Reference: budget.GetNamespacedName(),
+				Reason:    fmt.Sprintf("Unhealthy: %s", err),
+				Ok:        false,
+			})
+			break
+		}
+		status = append(status, nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: budget.GetNamespacedName(),
+			Reason:    "",
+			Ok:        true,
+		})
+	}
+	return any_failed, status
 }

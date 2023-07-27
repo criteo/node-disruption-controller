@@ -101,36 +101,29 @@ spec:
             description: NodeDisruptionStatus defines the observed state of NodeDisruption
               (/!\ it is eventually consistent)
             properties:
-              disruptedADB:
-                description: List of all the ApplicationDisruptionBudget that are disrupted
-                  by this NodeDisruption
+              disruptedDisruptionBudgets:
+                description: List of all the budgets disrupted by the NodeDisruption
                 items:
-                  description: This is the same as types.NamespacedName but serialisable
-                    to JSON
                   properties:
-                    name:
+                    ok:
+                      type: boolean
+                    reason:
                       type: string
-                    namespace:
-                      type: string
-                  required:
-                  - name
-                  - namespace
-                  type: object
-                type: array
-              disruptedNDB:
-                description: List of all the NodeDisruptionBudget that are disrupted
-                  by this NodeDisruption
-                items:
-                  description: This is the same as types.NamespacedName but serialisable
-                    to JSON
-                  properties:
-                    name:
-                      type: string
-                    namespace:
-                      type: string
-                  required:
-                  - name
-                  - namespace
+                    reference:
+                      description: This is the same as types.NamespacedName but serialisable
+                        to JSON
+                      properties:
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                      required:
+                      - kind
+                      - name
+                      - namespace
+                      type: object
                   type: object
                 type: array
               disruptedNodes:

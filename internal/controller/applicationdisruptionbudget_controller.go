@@ -73,33 +73,12 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 		Client:                      r.Client,
 	}
 
-	node_names, err := resolver.ResolveNodes(ctx)
+	resolver.Sync(ctx)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// Create a slice to store the set elements
-	nodes := make([]string, 0, node_names.Len())
-
-	// Iterate over the set and append elements to the slice
-	node_names.Do(func(item interface{}) {
-		nodes = append(nodes, item.(string))
-	})
-
-	disruption_nr, err := resolver.ResolveDisruption(ctx)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	adb.Status.WatchedNodes = nodes
-	adb.Status.CurrentDisruptions = disruption_nr
-	adb.Status.DisruptionsAllowed = adb.Spec.MaxDisruptions - disruption_nr
-
-	err = r.Status().Update(ctx, adb, []client.SubResourceUpdateOption{}...)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
+	err = resolver.UpdateStatus(ctx)
 	return ctrl.Result{}, nil
 }
 
@@ -113,6 +92,78 @@ func (r *ApplicationDisruptionBudgetReconciler) SetupWithManager(mgr ctrl.Manage
 type ApplicationDisruptionBudgetResolver struct {
 	ApplicationDisruptionBudget *nodedisruptionv1alpha1.ApplicationDisruptionBudget
 	Client                      client.Client
+}
+
+// Sync ensure the budget's status is up to date
+func (r *ApplicationDisruptionBudgetResolver) Sync(ctx context.Context) error {
+	node_names, err := r.ResolveNodes(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Create a slice to store the set elements
+	nodes := make([]string, 0, node_names.Len())
+
+	// Iterate over the set and append elements to the slice
+	node_names.Do(func(item interface{}) {
+		nodes = append(nodes, item.(string))
+	})
+
+	disruption_nr, err := r.ResolveDisruption(ctx)
+	if err != nil {
+		return err
+	}
+
+	r.ApplicationDisruptionBudget.Status.WatchedNodes = nodes
+	r.ApplicationDisruptionBudget.Status.CurrentDisruptions = disruption_nr
+	r.ApplicationDisruptionBudget.Status.DisruptionsAllowed = r.ApplicationDisruptionBudget.Spec.MaxDisruptions - disruption_nr
+	return nil
+}
+
+// Check if the budget would be impacted by an operation on the provided set of nodes
+func (r *ApplicationDisruptionBudgetResolver) IsImpacted(nd NodeDisruption) bool {
+	watched_nodes := NewNodeSetFromStringList(r.ApplicationDisruptionBudget.Status.WatchedNodes)
+	return watched_nodes.Intersection(nd.ImpactedNodes).Len() > 0
+}
+
+// Return the number of disruption allowed considering a list of current node disruptions
+func (r *ApplicationDisruptionBudgetResolver) TolerateDisruption(NodeDisruption) bool {
+	return r.ApplicationDisruptionBudget.Status.DisruptionsAllowed-1 < 0
+}
+
+func (r *ApplicationDisruptionBudgetResolver) UpdateStatus(ctx context.Context) error {
+	return r.Client.Status().Update(ctx, r.ApplicationDisruptionBudget.DeepCopy(), []client.SubResourceUpdateOption{}...)
+}
+
+func (r *ApplicationDisruptionBudgetResolver) GetNamespacedName() nodedisruptionv1alpha1.NamespacedName {
+	return nodedisruptionv1alpha1.NamespacedName{
+		Namespace: r.ApplicationDisruptionBudget.Namespace,
+		Name:      r.ApplicationDisruptionBudget.Name,
+		Kind:      r.ApplicationDisruptionBudget.Kind,
+	}
+}
+
+// Check health make a synchronous health check on the underlying ressource of a budget
+func (r *ApplicationDisruptionBudgetResolver) CheckHealth(context.Context) error {
+	if r.ApplicationDisruptionBudget.Spec.HealthURL == nil {
+		return nil
+	}
+	resp, err := http.Get(*r.ApplicationDisruptionBudget.Spec.HealthURL)
+	if err != nil {
+		log.Fatalln(err)
+		return err
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	} else {
+		return fmt.Errorf("http server responded with non 2XX status code: %s", string(body))
+	}
 }
 
 func (adbr *ApplicationDisruptionBudgetResolver) ResolveNodes(ctx context.Context) (*set.Set, error) {
@@ -303,57 +354,13 @@ func (adbr *ApplicationDisruptionBudgetResolver) ResolveDisruption(ctx context.C
 			NodeDisruption: &nd,
 			Client:         adbr.Client,
 		}
-		disrupted_nodes, err := node_disruption_resolver.ResolveNodes(ctx)
+		disruption, err := node_disruption_resolver.GetDisruption(ctx)
 		if err != nil {
 			return 0, err
 		}
-		if selected_nodes.Intersection(disrupted_nodes).Len() > 0 {
+		if selected_nodes.Intersection(disruption.ImpactedNodes).Len() > 0 {
 			disruptions += 1
 		}
 	}
 	return disruptions, nil
-}
-
-// AllowDisruption will be true if the NDB was impacted, Allowed will be true if NDB allow one more disruption
-func (adbr *ApplicationDisruptionBudgetResolver) AllowDisruption(ctx context.Context, nodes *set.Set) (disrupted, allowed bool, err error) {
-	selected_nodes, err := adbr.ResolveNodes(ctx)
-	if err != nil {
-		return false, false, err
-	}
-	if nodes.Intersection(selected_nodes).Len() == 0 {
-		return false, false, nil
-	}
-
-	disruption, err := adbr.ResolveDisruption(ctx)
-	if err != nil {
-		return true, false, err
-	}
-
-	if disruption+1 > adbr.ApplicationDisruptionBudget.Spec.MaxDisruptions {
-		return true, false, nil
-	}
-	return true, true, nil
-}
-
-// HealthCheck call ADB's URL if it exists and return an error if the call returns not a 2XX staus code
-func (adbr *ApplicationDisruptionBudgetResolver) HealthCheck(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption) (err error) {
-	if adbr.ApplicationDisruptionBudget.Spec.HealthURL == nil {
-		return nil
-	}
-	resp, err := http.Get(*adbr.ApplicationDisruptionBudget.Spec.HealthURL)
-	if err != nil {
-		log.Fatalln(err)
-		return err
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return nil
-	} else {
-		return fmt.Errorf("http server responded with non 2XX status code: %s", string(body))
-	}
 }
