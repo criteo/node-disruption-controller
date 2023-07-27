@@ -64,8 +64,8 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// TODO: check to see if another one is marked in progress
-	if nd.Spec.State == nodedisruptionv1alpha1.Pending {
-		nd.Spec.State = nodedisruptionv1alpha1.Processing
+	if nd.Status.State == nodedisruptionv1alpha1.Pending {
+		nd.Status.State = nodedisruptionv1alpha1.Processing
 		err = r.Update(ctx, nd.DeepCopy(), []client.UpdateOption{}...)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -99,11 +99,11 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	nd.Status.DisruptedDisruptionBudgets = statuses
 	nd.Status.DisruptedNodes = NodeSetToStringList(disruption.ImpactedNodes)
 
-	if nd.Spec.State == nodedisruptionv1alpha1.Processing {
+	if nd.Status.State == nodedisruptionv1alpha1.Processing {
 		if !any_failed {
-			nd.Spec.State = nodedisruptionv1alpha1.Granted
+			nd.Status.State = nodedisruptionv1alpha1.Granted
 		} else {
-			nd.Spec.State = nodedisruptionv1alpha1.Rejected
+			nd.Status.State = nodedisruptionv1alpha1.Rejected
 		}
 	}
 
@@ -117,7 +117,7 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconcilation successful", "state", nd.Spec.State)
+	logger.Info("Reconcilation successful", "state", nd.Status.State)
 	return ctrl.Result{}, nil
 }
 

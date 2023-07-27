@@ -347,7 +347,7 @@ func (adbr *ApplicationDisruptionBudgetResolver) ResolveDisruption(ctx context.C
 	}
 
 	for _, nd := range node_disruptions.Items {
-		if nd.Spec.State != nodedisruptionv1alpha1.Granted {
+		if nd.Status.State != nodedisruptionv1alpha1.Granted {
 			continue
 		}
 		node_disruption_resolver := NodeDisruptionResolver{

@@ -47,9 +47,6 @@ type NodeDisruptionSpec struct {
 
 	// Label query over nodes that will be impacted by the disruption
 	NodeSelector metav1.LabelSelector `json:"nodeSelector,omitempty"`
-	// +kubebuilder:default="pending"
-	// Disruption status
-	State NodeDisruptionState `json:"state"`
 }
 
 // NodeDisruptionStatus defines the observed state of NodeDisruption (/!\ it is eventually consistent)
@@ -57,6 +54,9 @@ type NodeDisruptionStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// +kubebuilder:default="pending"
+	// Disruption status
+	State NodeDisruptionState `json:"state,omitempty"`
 	// List of all the budgets disrupted by the NodeDisruption
 	DisruptedDisruptionBudgets []DisruptedBudgetStatus `json:"disruptedDisruptionBudgets,omitempty"`
 	// List of all the nodes that are disrupted by this NodeDisruption
@@ -72,7 +72,7 @@ type DisruptedBudgetStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster,shortName=nd
-//+kubebuilder:printcolumn:name="State",type=string,JSONPath=`.spec.state`
+//+kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
 
 // NodeDisruption is the Schema for the nodedisruptions API
 type NodeDisruption struct {
