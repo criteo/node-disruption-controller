@@ -129,7 +129,7 @@ func (r *ApplicationDisruptionBudgetResolver) IsImpacted(nd NodeDisruption) bool
 // Return the number of disruption allowed considering a list of current node disruptions
 func (r *ApplicationDisruptionBudgetResolver) TolerateDisruption(NodeDisruption) bool {
 	fmt.Println(r.ApplicationDisruptionBudget.Status.DisruptionsAllowed)
-	return r.ApplicationDisruptionBudget.Status.DisruptionsAllowed-1 < 0
+	return r.ApplicationDisruptionBudget.Status.DisruptionsAllowed-1 >= 0
 }
 
 func (r *ApplicationDisruptionBudgetResolver) UpdateStatus(ctx context.Context) error {

@@ -121,7 +121,7 @@ func (r *NodeDisruptionBudgetResolver) IsImpacted(nd NodeDisruption) bool {
 // Return the number of disruption allowed considering a list of current node disruptions
 func (r *NodeDisruptionBudgetResolver) TolerateDisruption(disrupted_nodes NodeDisruption) bool {
 	disrupted_nr := NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes).Intersection(disrupted_nodes.ImpactedNodes).Len()
-	return r.NodeDisruptionBudget.Status.DisruptionsAllowed-disrupted_nr < 0
+	return r.NodeDisruptionBudget.Status.DisruptionsAllowed-disrupted_nr >= 0
 }
 
 // NodeDisruption CheckHealth is always true
@@ -207,29 +207,4 @@ func (ndbr *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context)
 		}
 	}
 	return disruptions, nil
-}
-
-// AllowDisruption will be true if the NDB was impacted, Allowed will be true if NDB allow one more disruption
-func (ndbr *NodeDisruptionBudgetResolver) AllowDisruption(ctx context.Context, nodes *set.Set) (disrupted, allowed bool, err error) {
-	selected_nodes, err := ndbr.ResolveNodes(ctx)
-	if err != nil {
-		return false, false, err
-	}
-	if nodes.Intersection(selected_nodes).Len() == 0 {
-		return false, false, nil
-	}
-
-	disruption_nr, err := ndbr.ResolveDisruption(ctx)
-	if err != nil {
-		return true, false, err
-	}
-
-	disruptions_for_max := ndbr.NodeDisruptionBudget.Spec.MaxDisruptedNodes - disruption_nr
-	disruptions_for_min := (selected_nodes.Len() - disruption_nr) - ndbr.NodeDisruptionBudget.Spec.MinUndisruptedNodes
-	disruption_allowed := int(math.Min(float64(disruptions_for_max), float64(disruptions_for_min))) - disruption_nr
-
-	if disruption_nr+1 > disruption_allowed {
-		return true, false, nil
-	}
-	return true, true, nil
 }
