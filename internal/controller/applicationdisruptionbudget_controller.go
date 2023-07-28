@@ -79,7 +79,7 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 	}
 
 	err = resolver.UpdateStatus(ctx)
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, err
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -128,6 +128,7 @@ func (r *ApplicationDisruptionBudgetResolver) IsImpacted(nd NodeDisruption) bool
 
 // Return the number of disruption allowed considering a list of current node disruptions
 func (r *ApplicationDisruptionBudgetResolver) TolerateDisruption(NodeDisruption) bool {
+	fmt.Println(r.ApplicationDisruptionBudget.Status.DisruptionsAllowed)
 	return r.ApplicationDisruptionBudget.Status.DisruptionsAllowed-1 < 0
 }
 
