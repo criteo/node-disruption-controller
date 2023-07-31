@@ -21,6 +21,7 @@ import (
 	"math"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -54,6 +55,10 @@ func (r *NodeDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl
 	err := r.Client.Get(ctx, req.NamespacedName, ndb)
 
 	if err != nil {
+		if errors.IsNotFound(err) {
+			// If the ressource was not found, nothing has to be done
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{}, err
 	}
 
