@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -65,6 +66,10 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 	err := r.Client.Get(ctx, req.NamespacedName, adb)
 
 	if err != nil {
+		if errors.IsNotFound(err) {
+			// If the ressource was not found, nothing has to be done
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{}, err
 	}
 

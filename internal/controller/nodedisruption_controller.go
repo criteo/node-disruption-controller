@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -60,6 +61,10 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	err := r.Client.Get(ctx, req.NamespacedName, nd)
 
 	if err != nil {
+		if errors.IsNotFound(err) {
+			// If the ressource was not found, nothing has to be done
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{}, err
 	}
 
