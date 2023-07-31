@@ -71,6 +71,36 @@ spec:
       kubernetes.io/hostname: fakehostname
 ```
 
+Example of Node Disruption with status:
+```
+apiVersion: nodedisruption.criteo.com/v1alpha1
+kind: NodeDisruption
+metadata:
+  name: nodedisruption-sample
+spec:
+  nodeSelector: # Select all the nodes impacted by the disruption
+    matchLabels:
+      kubernetes.io/hostname: fakehostname
+status:
+  disruptedDisruptionBudgets:
+  - ok: false
+    reason: No more disruption allowed
+    reference:
+      kind: ApplicationDisruptionBudget
+      name: applicationdisruptionbudget-sample
+      namespace: somecluster
+  - ok: true
+    reason: ""
+    reference:
+      kind: ApplicationDisruptionBudget
+      name: applicationdisruptionbudget-sample
+      namespace: somecluster2
+  disruptedNodes:
+  - fakehostname
+  state: rejected
+```
+
+
 
 ### ApplicationDisruptionBudget
 
