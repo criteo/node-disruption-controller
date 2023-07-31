@@ -64,7 +64,7 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// TODO: check to see if another one is marked in progress
-	if nd.Status.State == nodedisruptionv1alpha1.Pending {
+	if nd.Status.State == nodedisruptionv1alpha1.Pending || nd.Status.State == "" {
 		nd.Status.State = nodedisruptionv1alpha1.Processing
 		err = r.Update(ctx, nd.DeepCopy(), []client.UpdateOption{}...)
 		if err != nil {
