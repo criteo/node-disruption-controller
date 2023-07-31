@@ -113,6 +113,9 @@ spec:
                       - name
                       - namespace
                       type: object
+                  required:
+                  - ok
+                  - reason
                   type: object
                 type: array
               disruptedNodes:
