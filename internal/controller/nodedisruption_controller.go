@@ -79,45 +79,40 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
-	resolver := NodeDisruptionResolver{
-		NodeDisruption: nd,
-		Client:         r.Client,
-	}
-
-	budgets, err := resolver.GetAllBudgetsInSync(ctx)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	disruption, err := resolver.GetDisruption(ctx)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	any_failed, statuses := resolver.ValidateDisruption(ctx, budgets, disruption)
-
-	nd.Status.DisruptedDisruptionBudgets = statuses
-	nd.Status.DisruptedNodes = NodeSetToStringList(disruption.ImpactedNodes)
-
 	if nd.Status.State == nodedisruptionv1alpha1.Processing {
+		resolver := NodeDisruptionResolver{
+			NodeDisruption: nd,
+			Client:         r.Client,
+		}
+
+		budgets, err := resolver.GetAllBudgetsInSync(ctx)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		disruption, err := resolver.GetDisruption(ctx)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		any_failed, statuses := resolver.ValidateDisruption(ctx, budgets, disruption)
+
+		nd.Status.DisruptedDisruptionBudgets = statuses
+		nd.Status.DisruptedNodes = NodeSetToStringList(disruption.ImpactedNodes)
+
 		if !any_failed {
 			nd.Status.State = nodedisruptionv1alpha1.Granted
 		} else {
 			nd.Status.State = nodedisruptionv1alpha1.Rejected
 		}
-	}
 
-	err = r.Update(ctx, nd.DeepCopy(), []client.UpdateOption{}...)
-	if err != nil {
-		return ctrl.Result{}, err
+		err = r.Status().Update(ctx, nd, []client.SubResourceUpdateOption{}...)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
-
-	err = r.Status().Update(ctx, nd, []client.SubResourceUpdateOption{}...)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
 	logger.Info("Reconcilation successful", "state", nd.Status.State)
+
 	return ctrl.Result{}, nil
 }
 
