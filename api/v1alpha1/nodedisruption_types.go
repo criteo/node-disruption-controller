@@ -65,8 +65,8 @@ type NodeDisruptionStatus struct {
 
 type DisruptedBudgetStatus struct {
 	Reference NamespacedName `json:"reference,omitempty"`
-	Reason    string         `json:"reason,omitempty"`
-	Ok        bool           `json:"ok,omitempty"`
+	Reason    string         `json:"reason"`
+	Ok        bool           `json:"ok"`
 }
 
 //+kubebuilder:object:root=true
