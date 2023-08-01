@@ -20,14 +20,13 @@ import (
 	"context"
 	"math"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
+	"github.com/criteo/node-disruption-controller/pkg/resolver"
 	"github.com/golang-collections/collections/set"
 )
 
@@ -65,6 +64,7 @@ func (r *NodeDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl
 	resolver := NodeDisruptionBudgetResolver{
 		NodeDisruptionBudget: ndb,
 		Client:               r.Client,
+		Resolver:             resolver.Resolver{Client: r.Client},
 	}
 
 	err = resolver.Sync(ctx)
@@ -86,11 +86,12 @@ func (r *NodeDisruptionBudgetReconciler) SetupWithManager(mgr ctrl.Manager) erro
 type NodeDisruptionBudgetResolver struct {
 	NodeDisruptionBudget *nodedisruptionv1alpha1.NodeDisruptionBudget
 	Client               client.Client
+	Resolver             resolver.Resolver
 }
 
 // Sync ensure the budget's status is up to date
 func (r *NodeDisruptionBudgetResolver) Sync(ctx context.Context) error {
-	node_names, err := r.ResolveNodes(ctx)
+	node_names, err := r.GetSelectedNodes(ctx)
 	if err != nil {
 		return err
 	}
@@ -146,10 +147,10 @@ func (r *NodeDisruptionBudgetResolver) GetNamespacedName() nodedisruptionv1alpha
 	}
 }
 
-func (ndbr *NodeDisruptionBudgetResolver) ResolveNodes(ctx context.Context) (*set.Set, error) {
+func (r *NodeDisruptionBudgetResolver) GetSelectedNodes(ctx context.Context) (*set.Set, error) {
 	node_names := set.New()
 
-	nodes_from_pods, err := ndbr.ResolveFromNodeSelector(ctx)
+	nodes_from_pods, err := r.Resolver.GetNodeFromNodeSelector(ctx, r.NodeDisruptionBudget.Spec.NodeSelector)
 	if err != nil {
 		return node_names, err
 	}
@@ -157,29 +158,8 @@ func (ndbr *NodeDisruptionBudgetResolver) ResolveNodes(ctx context.Context) (*se
 	return nodes_from_pods, nil
 }
 
-func (ndbr *NodeDisruptionBudgetResolver) ResolveFromNodeSelector(ctx context.Context) (*set.Set, error) {
-	node_names := set.New()
-	selector, err := metav1.LabelSelectorAsSelector(&ndbr.NodeDisruptionBudget.Spec.NodeSelector)
-	if err != nil || selector.Empty() {
-		return node_names, err
-	}
-	opts := []client.ListOption{
-		client.MatchingLabelsSelector{Selector: selector},
-	}
-	nodes := &corev1.NodeList{}
-	err = ndbr.Client.List(ctx, nodes, opts...)
-	if err != nil {
-		return node_names, err
-	}
-
-	for _, node := range nodes.Items {
-		node_names.Insert(node.ObjectMeta.Name)
-	}
-	return node_names, nil
-}
-
-func (ndbr *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (int, error) {
-	selected_nodes, err := ndbr.ResolveNodes(ctx)
+func (r *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (int, error) {
+	selected_nodes, err := r.GetSelectedNodes(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -189,7 +169,7 @@ func (ndbr *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context)
 	opts := []client.ListOption{}
 	node_disruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
 
-	err = ndbr.Client.List(ctx, node_disruptions, opts...)
+	err = r.Client.List(ctx, node_disruptions, opts...)
 	if err != nil {
 		return 0, err
 	}
@@ -200,7 +180,7 @@ func (ndbr *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context)
 		}
 		node_disruption_resolver := NodeDisruptionResolver{
 			NodeDisruption: &nd,
-			Client:         ndbr.Client,
+			Client:         r.Client,
 		}
 
 		disruption, err := node_disruption_resolver.GetDisruption(ctx)
