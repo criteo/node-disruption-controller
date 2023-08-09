@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
+	"github.com/criteo/node-disruption-controller/pkg/resolver"
 	"github.com/golang-collections/collections/set"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -172,6 +173,7 @@ func (ndr *NodeDisruptionResolver) GetAllBudgetsInSync(ctx context.Context) ([]B
 		adb_resolver := ApplicationDisruptionBudgetResolver{
 			ApplicationDisruptionBudget: &adb,
 			Client:                      ndr.Client,
+			Resolver:                    resolver.Resolver{Client: ndr.Client},
 		}
 		budgets = append(budgets, &adb_resolver)
 	}
@@ -185,6 +187,7 @@ func (ndr *NodeDisruptionResolver) GetAllBudgetsInSync(ctx context.Context) ([]B
 		ndb_resolver := NodeDisruptionBudgetResolver{
 			NodeDisruptionBudget: &ndb,
 			Client:               ndr.Client,
+			Resolver:             resolver.Resolver{Client: ndr.Client},
 		}
 		budgets = append(budgets, &ndb_resolver)
 	}
