@@ -73,7 +73,7 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 		Resolver:                    resolver.Resolver{Client: r.Client},
 	}
 
-	resolver.Sync(ctx)
+	err = resolver.Sync(ctx)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
