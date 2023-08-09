@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"sort"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/golang-collections/collections/set"
@@ -21,6 +22,7 @@ func NodeSetToStringList(node_set *set.Set) []string {
 	node_set.Do(func(item interface{}) {
 		nodes = append(nodes, item.(string))
 	})
+	sort.Strings(nodes)
 	return nodes
 }
 

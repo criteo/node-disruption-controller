@@ -22,6 +22,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"reflect"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -68,7 +69,7 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 	}
 
 	resolver := ApplicationDisruptionBudgetResolver{
-		ApplicationDisruptionBudget: adb,
+		ApplicationDisruptionBudget: adb.DeepCopy(),
 		Client:                      r.Client,
 		Resolver:                    resolver.Resolver{Client: r.Client},
 	}
@@ -78,7 +79,10 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 		return ctrl.Result{}, err
 	}
 
-	err = resolver.UpdateStatus(ctx)
+	if !reflect.DeepEqual(resolver.ApplicationDisruptionBudget.Status, adb.Status) {
+		err = resolver.UpdateStatus(ctx)
+	}
+
 	return ctrl.Result{}, err
 }
 
@@ -102,13 +106,7 @@ func (r *ApplicationDisruptionBudgetResolver) Sync(ctx context.Context) error {
 		return err
 	}
 
-	// Create a slice to store the set elements
-	nodes := make([]string, 0, node_names.Len())
-
-	// Iterate over the set and append elements to the slice
-	node_names.Do(func(item interface{}) {
-		nodes = append(nodes, item.(string))
-	})
+	nodes := NodeSetToStringList(node_names)
 
 	disruption_nr, err := r.ResolveDisruption(ctx)
 	if err != nil {
@@ -129,7 +127,6 @@ func (r *ApplicationDisruptionBudgetResolver) IsImpacted(nd NodeDisruption) bool
 
 // Return the number of disruption allowed considering a list of current node disruptions
 func (r *ApplicationDisruptionBudgetResolver) TolerateDisruption(NodeDisruption) bool {
-	fmt.Println(r.ApplicationDisruptionBudget.Status.DisruptionsAllowed)
 	return r.ApplicationDisruptionBudget.Status.DisruptionsAllowed-1 >= 0
 }
 
