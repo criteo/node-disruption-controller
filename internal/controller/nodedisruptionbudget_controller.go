@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"math"
+	"reflect"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -62,7 +63,7 @@ func (r *NodeDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	resolver := NodeDisruptionBudgetResolver{
-		NodeDisruptionBudget: ndb,
+		NodeDisruptionBudget: ndb.DeepCopy(),
 		Client:               r.Client,
 		Resolver:             resolver.Resolver{Client: r.Client},
 	}
@@ -72,7 +73,10 @@ func (r *NodeDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, err
 	}
 
-	err = resolver.UpdateStatus(ctx)
+	if !reflect.DeepEqual(resolver.NodeDisruptionBudget.Status, ndb.Status) {
+		err = resolver.UpdateStatus(ctx)
+	}
+
 	return ctrl.Result{}, err
 }
 
@@ -96,13 +100,7 @@ func (r *NodeDisruptionBudgetResolver) Sync(ctx context.Context) error {
 		return err
 	}
 
-	// Create a slice to store the set elements
-	nodes := make([]string, 0, node_names.Len())
-
-	// Iterate over the set and append elements to the slice
-	node_names.Do(func(item interface{}) {
-		nodes = append(nodes, item.(string))
-	})
+	nodes := NodeSetToStringList(node_names)
 
 	disruption_nr, err := r.ResolveDisruption(ctx)
 	if err != nil {
