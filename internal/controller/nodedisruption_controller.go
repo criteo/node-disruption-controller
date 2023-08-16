@@ -171,7 +171,7 @@ func (ndr *NodeDisruptionResolver) GetAllBudgetsInSync(ctx context.Context) ([]B
 	}
 	for _, adb := range application_disruption_budgets.Items {
 		adb_resolver := ApplicationDisruptionBudgetResolver{
-			ApplicationDisruptionBudget: &adb,
+			ApplicationDisruptionBudget: adb.DeepCopy(),
 			Client:                      ndr.Client,
 			Resolver:                    resolver.Resolver{Client: ndr.Client},
 		}
@@ -185,7 +185,7 @@ func (ndr *NodeDisruptionResolver) GetAllBudgetsInSync(ctx context.Context) ([]B
 	}
 	for _, ndb := range node_disruption_budget.Items {
 		ndb_resolver := NodeDisruptionBudgetResolver{
-			NodeDisruptionBudget: &ndb,
+			NodeDisruptionBudget: ndb.DeepCopy(),
 			Client:               ndr.Client,
 			Resolver:             resolver.Resolver{Client: ndr.Client},
 		}
