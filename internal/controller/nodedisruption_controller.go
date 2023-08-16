@@ -102,6 +102,11 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 
 		any_failed, statuses := resolver.ValidateDisruption(ctx, budgets, disruption)
+		if !any_failed {
+			logger.Info("Disruption accepted", "statuses", statuses)
+		} else {
+			logger.Info("Disruption rejected", "statuses", statuses)
+		}
 
 		nd.Status.DisruptedDisruptionBudgets = statuses
 		nd.Status.DisruptedNodes = NodeSetToStringList(disruption.ImpactedNodes)
@@ -203,7 +208,8 @@ func (ndr *NodeDisruptionResolver) GetAllBudgetsInSync(ctx context.Context) ([]B
 }
 
 // Validate a disruption give a list of budget
-func (ndr *NodeDisruptionResolver) ValidateDisruption(ctx context.Context, budgets []Budget, nd NodeDisruption) (any_failed bool, status []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
+func (ndr *NodeDisruptionResolver) ValidateDisruption(ctx context.Context, budgets []Budget, nd NodeDisruption) (any_failed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
+	logger := log.FromContext(ctx)
 	any_failed = false
 
 	impacted_budgets := []Budget{}
@@ -214,36 +220,41 @@ func (ndr *NodeDisruptionResolver) ValidateDisruption(ctx context.Context, budge
 
 		if !budget.TolerateDisruption(nd) {
 			any_failed = true
-			status = append(status, nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
 				Reference: budget.GetNamespacedName(),
 				Reason:    "No more disruption allowed",
 				Ok:        false,
-			})
+			}
+			statuses = append(statuses, status)
+			logger.Info("Disruption rejected because: ", "status", status)
 			break
 		}
 		impacted_budgets = append(impacted_budgets, budget)
 	}
 
 	if any_failed {
-		return any_failed, status
+		return any_failed, statuses
 	}
 
 	for _, budget := range impacted_budgets {
 		err := budget.CheckHealth(ctx)
 		if err != nil {
 			any_failed = true
-			status = append(status, nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
 				Reference: budget.GetNamespacedName(),
 				Reason:    fmt.Sprintf("Unhealthy: %s", err),
 				Ok:        false,
-			})
+			}
+			statuses = append(statuses, status)
+			logger.Info("Disruption rejected because: ", "status", status)
 			break
 		}
-		status = append(status, nodedisruptionv1alpha1.DisruptedBudgetStatus{
+		statuses = append(statuses, nodedisruptionv1alpha1.DisruptedBudgetStatus{
 			Reference: budget.GetNamespacedName(),
 			Reason:    "",
 			Ok:        true,
 		})
 	}
-	return any_failed, status
+
+	return any_failed, statuses
 }
