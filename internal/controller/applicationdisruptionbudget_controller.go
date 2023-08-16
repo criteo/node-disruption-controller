@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"reflect"
 
@@ -149,13 +148,12 @@ func (r *ApplicationDisruptionBudgetResolver) CheckHealth(context.Context) error
 	}
 	resp, err := http.Get(*r.ApplicationDisruptionBudget.Spec.HealthURL)
 	if err != nil {
-		log.Fatalln(err)
 		return err
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
