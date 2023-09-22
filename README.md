@@ -1,23 +1,58 @@
-# node-disruption-controller
+# Node Disruption Controller
 
-Node-disruption-controller is a way to control node disruptions in a Kubernetes cluster.
+Node-disruption-controller (NDB) is a way to control node disruptions (e.g. for maintenance purpose) in a Kubernetes cluster.
+
+
+## Motivation
+
+The Node Disruption Controller was built to help perform maintenance operations on Kubernetes clusters running stateful workloads, especially those reliant on local storage like databases. Nodes within a Kubernetes cluster are subject to disruptions: involuntary (like hardware failures, VM premption, or crashes) and voluntary (such as node maintenance). Performing efficient yet safe maintenances when it involves multiple actors (different teams, different controllers) is challenging. The Node Disruption Controller provides an interface between the actors that want to perform maintenances on nodes (maintenance systems, autoscalers) and the ones that are operating services on top of these nodes.
+
+While workload operators should build systems that are resilient to involuntary disruptions, the controller helps ensure that voluntary disruptions are as safe as they can be.
+
+
+### Data protection
+
+Stateful workloads can have both a compute and a storage component: compute is represented by the Pod and protected by PDB.
+Storage is represented by Persistent Volume (PV) and PV Claims (PVC). While remote storage typically requires no special protection, local storage does. Even though stateful workloads are designed to tolerate the loss of local data, this loss is not without consequences, such as prolonged data rebalancing and/or manual intervention.
+
+When relying on drain and PDB, data is safeguarded from eviction only if a Pod is actively running on it. Nevertheless, certain scenarios exist where Pods are not running on the node with the data, and losing a node would be costly:
+
+- Critical rolling update: During a rolling update, Pods are restarted. If a Pod running on a node that is cordoned, preventing it from restarting on the node, the node can be drained successfully even if the    PDB permits no disruptions. While the database should ideally withstand the loss of data from a single node, allowing it during a major version upgrade can be risky (Database might not allow node replacement in the middle of an upgrade).
+- Forced eviction on multiple pods: In real-world production environments, we've observed cases where node pressure leads to the eviction of multiple Pods within a StatefulSet. In such instances, node drains proceed without issue on nodes that forcefully evicted their pods. PDB is rendered useless. If multiple nodes enter maintenance mode simultaneously, data loss can occur.
+
+The Node Disruption Controller addresses these concerns by providing that is data (PVC/PV) aware.
+
+
+### Service level healthcheck
+
+Kubernetes primitives and PDB only provide pod-level healthiness protection through mechanisms like liveness and readiness probes. However stateful workloads often provide service level healthiness (data redundancy status, SLA monitoring). In cases where the service is not in a healthy state, we must avoid initiating voluntary disruptions.
+
+Unfortunately, at the moment Kubernetes doesn't provide such API. Prior to the Node Disruption Controller (NDB), we addressed this need through periodic checks, where we set `maxUnavailable=0` if the service is unhealthy. However, asynchronous health checking is dangerous as it hard to check when the last health check was made (the periodic system could be broken and the state not updated for a long time) or it cannot be fast enough and lead to multiple evictions being granted before reacting. NDB prevents these issues by providing a synchronous health checking API.
 
 ## Description
 
-The main use case of the node disruption controller is to perform "impacting" maintenance on nodes.
-Typically a maintenance requires draining the pods of a node then having the node unavailable
-for a period of time (maybe forever).
+The primary purpose of the Node Disruption Controller (NDB) is to provide a set of APIs to ensure safety of voluntary node-level disruptions, such as maintenances. Typically, maintenance involves the eviction of pods from a node and potentially rendering the node temporarily or permanently unavailable.
 
-The system is build around a contract: before doing anything on a node, a node disruption
-need to be accepted for the node.
+The system is build around a contract: before any actions are taken on a node, a node disruption must be granted for that specific node. Once a node disruption has been granted, the requester can do what it wants (e.g., drain the node).
 
-The controller is responsible for accepting node disruption. It does that by looking at
-constraints provided by the disruptions budgets. The application disruption budget serve to
-represent the constraints of an application running on top of Kubernetes. The main difference
-with a PDB is that the Application Disruption Budget can:
+*The Node Disruption Controller functions as a gatekeeper* before maintenance are performed. It ensures that
+performing a maintenance on a node (or a set of node) is safe by ensuring that all stakeholders (i.e. all
+users of the Node) are ready for the node to enter maintenance.
+
+It can do that by providing advanced disruption budgets (similar to PodDisruptionBudget) to workload owners.
+The main type of budget provided is the Application Disruption Budget (naming is subject to change), it is
+different from the PDB on the following point:
 - Target PVC, to prevent maintenance even when no pods are running. This is useful when relying
   on local storage.
-- Can perform a synchronous service level health check. PDB is only looking at the readiness probes
+- Can perform a synchronous service level health check. PDB is only looking at the readiness probes of individual pods
+- A pod can have more than one budget
+
+Finally, NDB's goal is to make the implementation by the workload owners simple. Owners don't have to implement all
+the features attain a level of safety they are satisfied with:
+- Stateless workload owners don't have to use Node Disruption Budget as they can use PodDisruptionBudgets (PDB)
+- Stateful owner can only provide a budget without service health-checking
+- they can provide budget and health checking by providing an API
+- they can rely on a controller and the health checking API to ensure maximum safety.
 
 
 ## Components
@@ -40,15 +75,15 @@ stateDiagram
     [*] --> Pending
 
     Pending --> Processing
-    Processing --> Accepted
+    Processing --> Granted
     Processing --> Rejected
-    Accepted --> [*]
+    Granted --> [*]
     Rejected --> [*]
 ```
 
 * Pending: the disruption has not been processed yet by the controller
-* Processing: the controller is processing the disruption, checking if it can be accepted or not
-* Accepted: the disruption has been accepted. the selected nodes can be disrupted. It should be
+* Processing: the controller is processing the disruption, checking if it can be granted or not
+* Granted: the disruption has been granted. the selected nodes can be disrupted. It should be
   deleted once the disruption is over.
 * Rejected: the disruption has been rejected with a reason in the events, it can be safely deleted
 
@@ -72,7 +107,7 @@ spec:
 ```
 
 Example of Node Disruption with status:
-```
+```yaml
 apiVersion: nodedisruption.criteo.com/v1alpha1
 kind: NodeDisruption
 metadata:
@@ -191,10 +226,10 @@ sequenceDiagram
   Controller->>NodeDisruption: Reconcile NodeDisruption
   Controller->>NodeDisruption: Set NodeDisruption as `processing`
   Controller->>NodeDisruptionBudget\nApplicationBudget: Check if all impacted budget can\ntolerate one more disruption
-  Controller->>NodeDisruption: Set NodeDisruption as `accepted`
+  Controller->>NodeDisruption: Set NodeDisruption as `granted`
   User->>NodeDisruption: Poll NodeDisruption
   Controller->>NodeDisruptionBudget\nApplicationBudget: Update status
-  NodeDisruption-->>User: NodeDisruption is `accepted`
+  NodeDisruption-->>User: NodeDisruption is `granted`
   Note over User: Perform impacting operation on node
   User->>NodeDisruption: Delete NodeDisruption
   Note over Controller: Eventually
@@ -224,13 +259,13 @@ TeamK, before doing a maintenance of a node will create a NodeDisruption. The co
 wich budgets are impacted by the disruption and check if they can tolerate one more disruption.
 If not, the NodeDisruption will be rejected. TeamK will have to retry creating a NodeDisruption
 later.
-If it is accepted, TeamK can disrupt the node. In this case, the disruption will be the drain and
+If it is granted, TeamK can disrupt the node. In this case, the disruption will be the drain and
 reboot of the Node in question.
 
 ### Node autoscaling system
 
 The same features can apply to a Node autoscaling system that needs safely scale down a Kubernetes cluster.
-Let's say the system wants to remove 10 nodes from a Kubernetes cluster. It can select nodes randomly, try to create a NodeDisruption, if it is accepted, the node can be drained and removed. If it's rejected, the system
+Let's say the system wants to remove 10 nodes from a Kubernetes cluster. It can select nodes randomly, try to create a NodeDisruption, if it is granted, the node can be drained and removed. If it's rejected, the system
 can try another node or try later. The budgets ensure that all the drains and node removals are safe.
 
 ## Getting Started
