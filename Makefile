@@ -112,7 +112,7 @@ HELMIFY ?= $(LOCALBIN)/helmify
 helmify: $(HELMIFY) ## Download helmify locally if necessary.
 $(HELMIFY): $(LOCALBIN)
 	test -s $(LOCALBIN)/helmify || GOBIN=$(LOCALBIN) go install github.com/arttor/helmify/cmd/helmify@latest
-    
+
 helm: manifests kustomize helmify
 	$(KUSTOMIZE) build config/default | $(HELMIFY)
 
@@ -151,10 +151,14 @@ KUBECTL ?= kubectl
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
+KIND ?= $(LOCALBIN)/kind
+KINDCLUSTER ?= ndb
+KINDCONFIG ?= $(shell pwd)/.kubecfg
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.1
 CONTROLLER_TOOLS_VERSION ?= v0.12.0
+KIND_VERSION ?= v0.20.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -179,3 +183,20 @@ $(ENVTEST): $(LOCALBIN)
 .PHONY: golangci
 golangci: ## Run golangci
 	test -s $(LOCALBIN)/golangci-lint || GOBIN=$(LOCALBIN) go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+$(KIND): $(LOCALBIN)
+	test -s $(LOCALBIN)/kind || GOBIN=$(LOCALBIN) GO111MODULE=on go install sigs.k8s.io/kind@$(KIND_VERSION)
+
+.PHONY: kind-init
+kind-init: $(KINDCONFIG)
+$(KINDCONFIG): $(KIND)
+	$(KIND) create cluster --name $(KINDCLUSTER) --config hack/cluster.yml --kubeconfig $(KINDCONFIG)
+
+.PHONY: kind-load
+kind-load: $(KINDCONFIG) docker-build
+	$(KIND) load docker-image $(IMG) --name $(KINDCLUSTER)
+
+.PHONY: kind-cleanup
+kind-cleanup: $(KIND)
+	$(KIND) delete cluster --name $(KINDCLUSTER)
+	rm -f $(KINDCONFIG)

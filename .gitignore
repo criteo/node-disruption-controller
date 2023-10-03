@@ -23,3 +23,5 @@ Dockerfile.cross
 *.swp
 *.swo
 *~
+
+.kubecfg

@@ -147,7 +147,7 @@ running inside Kubernetes. It can select Pod (like PDB) but also PVC (to protect
 ApplicationDisruptionBudget aims at providing a way to expose service level healthiness to Kubernetes.
 In some cases, an application can be unhealthy even if all its pods are running.
 
-You can select Pods and/or PVCs. 
+You can select Pods and/or PVCs.
 
 
 ##### PVC selector
@@ -271,6 +271,15 @@ can try another node or try later. The budgets ensure that all the drains and no
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
 **Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).
+
+### Running on a local kind cluster
+1. Spawn new cluster, load the controller image on its nodes and deploy the controller:
+
+```sh
+make kind-init kind-load deploy
+```
+
+Kubeconfig is written to `KINDCONFIG` (`.kubecfg` by default).
 
 ### Running on the cluster
 1. Install Instances of Custom Resources:
