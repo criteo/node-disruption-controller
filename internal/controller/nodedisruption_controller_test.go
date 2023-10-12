@@ -171,6 +171,54 @@ var _ = Describe("NodeDisruption controller", func() {
 			})
 		})
 
-	})
+		Context("If a NodeDisruption's nodeSelector does not match any node", func() {
+			var (
+				nodeLabelsNoMatch = map[string]string{"testselect": "nope"}
+				createdDisruption = &nodedisruptionv1alpha1.NodeDisruption{}
+			)
 
+			BeforeEach(func() {
+				disruption := &nodedisruptionv1alpha1.NodeDisruption{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "nodedisruption.criteo.com/v1alpha1",
+						Kind:       "NodeDisruption",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      NDName,
+						Namespace: NDNamespace,
+					},
+					Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+						NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabelsNoMatch},
+					},
+				}
+				Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+			})
+			AfterEach(func() {
+				clearAllNodeDisruptionRessources()
+			})
+      // TODO: find how to change controller config
+			// When("RejectEmptyNodeDisruption is enabled", func() {
+			// 	It("rejects the NodeDisruption", func() {
+			// 		Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+			// 			err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+			// 			if err != nil {
+			// 				panic("should be able to get")
+			// 			}
+			// 			return createdDisruption.Status.State
+			// 		}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Rejected))
+			// 	})
+			// })
+			When("RejectEmptyNodeDisruption is disabled", func() {
+				It("grants the NodeDisruption", func() {
+					Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+						err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+						if err != nil {
+							panic("should be able to get")
+						}
+						return createdDisruption.Status.State
+					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Granted))
+				})
+			})
+		})
+	})
 })

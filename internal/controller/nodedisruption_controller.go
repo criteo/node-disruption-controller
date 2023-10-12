@@ -34,11 +34,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type NodeDisruptionReconcilerConfig struct {
+	// Whether to grant or reject a node disruption matching no node
+	RejectEmptyNodeDisruption bool
+}
+
 // NodeDisruptionReconciler reconciles a NodeDisruption object
 type NodeDisruptionReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+	Config   NodeDisruptionReconcilerConfig
 }
 
 //+kubebuilder:rbac:groups=nodedisruption.criteo.com,resources=nodedisruptions,verbs=get;list;watch;create;update;patch;delete
@@ -102,10 +108,13 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 
 		any_failed, statuses := resolver.ValidateDisruption(ctx, budgets, disruption)
-		if !any_failed {
-			logger.Info("Disruption accepted", "statuses", statuses)
-		} else {
-			logger.Info("Disruption rejected", "statuses", statuses)
+
+		if r.Config.RejectEmptyNodeDisruption && disruption.ImpactedNodes.Len() == 0 {
+			any_failed = true
+			statuses = append(statuses, nodedisruptionv1alpha1.DisruptedBudgetStatus{
+				Reason: "No Node matching selector",
+				Ok:     false,
+			})
 		}
 
 		nd.Status.DisruptedDisruptionBudgets = statuses
@@ -113,8 +122,10 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 		if !any_failed {
 			nd.Status.State = nodedisruptionv1alpha1.Granted
+			logger.Info("Disruption accepted", "statuses", statuses)
 		} else {
 			nd.Status.State = nodedisruptionv1alpha1.Rejected
+			logger.Info("Disruption rejected", "statuses", statuses)
 		}
 
 		err = r.Status().Update(ctx, nd, []client.SubResourceUpdateOption{}...)
