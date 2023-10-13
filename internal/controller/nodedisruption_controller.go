@@ -82,7 +82,7 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if nd.Status.State == "" {
 		nd.Status.State = nodedisruptionv1alpha1.Pending
-		err = r.Status().Update(ctx, nd, []client.SubResourceUpdateOption{}...)
+		err = r.Client.Status().Update(ctx, nd, []client.SubResourceUpdateOption{}...)
 
 		// Switch to pending and schedule another reconcile run
 		ctrl_result.Requeue = true
@@ -104,7 +104,7 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 		nd.Status = status
 
-		err = r.Status().Update(ctx, nd, []client.SubResourceUpdateOption{}...)
+		err = r.Client.Status().Update(ctx, nd, []client.SubResourceUpdateOption{}...)
 		logger.Info("Updating Status, done with", "state", nd.Status.State)
 		if err != nil {
 			return ctrl_result, err
