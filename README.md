@@ -74,18 +74,22 @@ stateDiagram
     direction LR
     [*] --> Pending
 
-    Pending --> Processing
-    Processing --> Granted
-    Processing --> Rejected
+    Pending --> Pending: Rejected with retry
+    Pending --> Granted
+    Pending --> Rejected: Finally rejected
+
     Granted --> [*]
     Rejected --> [*]
 ```
 
 * Pending: the disruption has not been processed yet by the controller
-* Processing: the controller is processing the disruption, checking if it can be granted or not
 * Granted: the disruption has been granted. the selected nodes can be disrupted. It should be
   deleted once the disruption is over.
 * Rejected: the disruption has been rejected with a reason in the events, it can be safely deleted
+
+##### Retry
+
+NodeDisruption can be retried automatically. The main purpose of retry is to allow prepation for a disruption. Some disruptions cannot be allowed until some preparations operations have been completed (e.g. replicating data out of the node). A controller can consumme the pending NodeDisruption, perform the required operations and finaly accept the disruption when it is safe.
 
 #### Sample object
 
@@ -101,6 +105,9 @@ metadata:
     app.kubernetes.io/created-by: node-disruption-controller
   name: nodedisruption-sample
 spec:
+  # retry:
+  #   enabled: false
+  #   deadline: <date after which the maintenance is not retried>
   nodeSelector: # Select all the nodes impacted by the disruption
     matchLabels:
       kubernetes.io/hostname: fakehostname
@@ -123,18 +130,18 @@ status:
     reference:
       kind: ApplicationDisruptionBudget
       name: applicationdisruptionbudget-sample
-      namespace: somecluster
+      namespace: someWorkload
   - ok: true
     reason: ""
     reference:
       kind: ApplicationDisruptionBudget
       name: applicationdisruptionbudget-sample
-      namespace: somecluster2
+      namespace: someWorkload2
   disruptedNodes:
   - fakehostname
-  state: rejected
+  state: Pending
+  retryDate: <date>
 ```
-
 
 
 ### ApplicationDisruptionBudget

@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -53,12 +54,14 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var rejectEmptyNodeDisruption bool
+	var retryInterval time.Duration
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&rejectEmptyNodeDisruption, "reject-empty-node-disruption", false, "Reject NodeDisruption matching no actual node.")
+	flag.DurationVar(&retryInterval, "retry-interval", controller.DefaultRetryInterval, "How long to wait between each retry (Default 60s)")
 
 	opts := zap.Options{
 		Development: true,
@@ -97,6 +100,7 @@ func main() {
 		Scheme: mgr.GetScheme(),
 		Config: controller.NodeDisruptionReconcilerConfig{
 			RejectEmptyNodeDisruption: rejectEmptyNodeDisruption,
+			RetryInterval:             retryInterval,
 		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "NodeDisruption")

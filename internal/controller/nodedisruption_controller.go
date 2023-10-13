@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,9 +35,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	DefaultRetryInterval = time.Minute
+)
+
 type NodeDisruptionReconcilerConfig struct {
 	// Whether to grant or reject a node disruption matching no node
 	RejectEmptyNodeDisruption bool
+	// How long to retry between each validation attempt
+	RetryInterval time.Duration
 }
 
 // NodeDisruptionReconciler reconciles a NodeDisruption object
@@ -53,16 +60,12 @@ type NodeDisruptionReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the NodeDisruption object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Start reconcile of NodeDisruption")
+
+	ctrl_result := ctrl.Result{}
 
 	nd := &nodedisruptionv1alpha1.NodeDisruption{}
 	err := r.Client.Get(ctx, req.NamespacedName, nd)
@@ -70,72 +73,82 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// If the ressource was not found, nothing has to be done
-			return ctrl.Result{}, nil
+			return ctrl_result, nil
 		}
-		return ctrl.Result{}, err
+		return ctrl_result, err
 	}
 
-	// TODO: check to see if another one is marked in progress
-	if nd.Status.State == nodedisruptionv1alpha1.Pending || nd.Status.State == "" {
-		nd.Status.State = nodedisruptionv1alpha1.Processing
+	logger.Info("Start reconcile of NodeDisruption", "state", nd.Status.State, "retryDate", nd.Status.NextRetryDate.Time)
+
+	if nd.Status.State == "" {
+		nd.Status.State = nodedisruptionv1alpha1.Pending
 		err = r.Status().Update(ctx, nd, []client.SubResourceUpdateOption{}...)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
 
-		nd := &nodedisruptionv1alpha1.NodeDisruption{}
-		err := r.Client.Get(ctx, req.NamespacedName, nd)
-
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+		// Switch to pending and schedule another reconcile run
+		ctrl_result.Requeue = true
+		return ctrl_result, err
 	}
 
-	if nd.Status.State == nodedisruptionv1alpha1.Processing {
-		resolver := NodeDisruptionResolver{
-			NodeDisruption: nd,
-			Client:         r.Client,
+	if nd.Status.State == nodedisruptionv1alpha1.Pending {
+		if time.Now().Before(nd.Status.NextRetryDate.Time) {
+			ctrl_result.RequeueAfter = time.Until(nd.Status.NextRetryDate.Time)
+			logger.Info("Time not elapsed, retry later", "currentDate", time.Now(), "retryDate", nd.Status.NextRetryDate.Time)
+			return ctrl_result, nil
 		}
 
-		budgets, err := resolver.GetAllBudgetsInSync(ctx)
+		logger.Info("Trying to validate the node disruption")
+		status, err := r.tryValidatingDisruption(ctx, nd)
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl_result, err
 		}
 
-		disruption, err := resolver.GetDisruption(ctx)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-
-		any_failed, statuses := resolver.ValidateDisruption(ctx, budgets, disruption)
-
-		if r.Config.RejectEmptyNodeDisruption && disruption.ImpactedNodes.Len() == 0 {
-			any_failed = true
-			statuses = append(statuses, nodedisruptionv1alpha1.DisruptedBudgetStatus{
-				Reason: "No Node matching selector",
-				Ok:     false,
-			})
-		}
-
-		nd.Status.DisruptedDisruptionBudgets = statuses
-		nd.Status.DisruptedNodes = NodeSetToStringList(disruption.ImpactedNodes)
-
-		if !any_failed {
-			nd.Status.State = nodedisruptionv1alpha1.Granted
-			logger.Info("Disruption accepted", "statuses", statuses)
-		} else {
-			nd.Status.State = nodedisruptionv1alpha1.Rejected
-			logger.Info("Disruption rejected", "statuses", statuses)
-		}
+		nd.Status = status
 
 		err = r.Status().Update(ctx, nd, []client.SubResourceUpdateOption{}...)
+		logger.Info("Updating Status, done with", "state", nd.Status.State)
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl_result, err
 		}
 	}
+
 	logger.Info("Reconcilation successful", "state", nd.Status.State)
+	return ctrl_result, nil
+}
 
-	return ctrl.Result{}, nil
+func (r *NodeDisruptionReconciler) tryValidatingDisruption(ctx context.Context, nd *nodedisruptionv1alpha1.NodeDisruption) (
+	status nodedisruptionv1alpha1.NodeDisruptionStatus, err error) {
+
+	resolver := NodeDisruptionResolver{
+		NodeDisruption: nd,
+		Client:         r.Client,
+		Config:         r.Config,
+	}
+
+	any_failed, status, err := resolver.ValidateDisruption(ctx)
+	if err != nil {
+		return status, err
+	}
+
+	var retry_date time.Time
+	if nd.Spec.Retry.Enabled && !nd.Spec.Retry.IsAfterDeadline() {
+		retry_date = metav1.Now().Add(r.Config.RetryInterval)
+	} else {
+		retry_date = time.Time{}
+	}
+
+	status.NextRetryDate = metav1.NewTime(retry_date)
+
+	if !any_failed {
+		status.State = nodedisruptionv1alpha1.Granted
+	} else {
+		if !status.NextRetryDate.IsZero() {
+			status.State = nodedisruptionv1alpha1.Pending
+		} else {
+			status.State = nodedisruptionv1alpha1.Rejected
+		}
+	}
+
+	return status, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -149,6 +162,58 @@ func (r *NodeDisruptionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 type NodeDisruptionResolver struct {
 	NodeDisruption *nodedisruptionv1alpha1.NodeDisruption
 	Client         client.Client
+	Config         NodeDisruptionReconcilerConfig
+}
+
+func (ndr *NodeDisruptionResolver) ValidateDisruption(ctx context.Context) (any_failed bool, status nodedisruptionv1alpha1.NodeDisruptionStatus, err error) {
+	disruption, err := ndr.GetDisruption(ctx)
+	if err != nil {
+		return true, status, err
+	}
+
+	status.DisruptedNodes = NodeSetToStringList(disruption.ImpactedNodes)
+
+	if ndr.Config.RejectEmptyNodeDisruption && disruption.ImpactedNodes.Len() == 0 {
+		status.DisruptedDisruptionBudgets = []nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			{
+				Reference: nodedisruptionv1alpha1.NamespacedName{
+					Namespace: ndr.NodeDisruption.Namespace,
+					Name:      ndr.NodeDisruption.Name,
+					Kind:      ndr.NodeDisruption.Kind,
+				},
+				Reason: "No Node matching selector",
+				Ok:     false,
+			},
+		}
+		return true, status, nil
+	}
+
+	if ndr.NodeDisruption.Spec.Retry.IsAfterDeadline() {
+		status.DisruptedDisruptionBudgets = []nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			{
+				Reference: nodedisruptionv1alpha1.NamespacedName{
+					Namespace: ndr.NodeDisruption.Namespace,
+					Name:      ndr.NodeDisruption.Name,
+					Kind:      ndr.NodeDisruption.Kind,
+				},
+				Reason: "Deadline exceeded",
+				Ok:     false,
+			},
+		}
+
+		return true, status, nil
+	}
+
+	budgets, err := ndr.GetAllBudgetsInSync(ctx)
+	if err != nil {
+		return true, status, err
+	}
+
+	any_failed, statuses := ndr.DoValidateDisruption(ctx, budgets, disruption)
+
+	status.DisruptedDisruptionBudgets = statuses
+
+	return any_failed, status, nil
 }
 
 // Resolve the nodes impacted by the NodeDisruption
@@ -219,7 +284,7 @@ func (ndr *NodeDisruptionResolver) GetAllBudgetsInSync(ctx context.Context) ([]B
 }
 
 // Validate a disruption give a list of budget
-func (ndr *NodeDisruptionResolver) ValidateDisruption(ctx context.Context, budgets []Budget, nd NodeDisruption) (any_failed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
+func (ndr *NodeDisruptionResolver) DoValidateDisruption(ctx context.Context, budgets []Budget, nd NodeDisruption) (any_failed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
 	logger := log.FromContext(ctx)
 	any_failed = false
 
