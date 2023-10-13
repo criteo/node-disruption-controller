@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,14 +32,13 @@ type NamespacedName struct {
 	Kind      string `json:"kind"`
 }
 
-// +kubebuilder:validation:Enum="pending";"granted";"rejected";"processing"
+// +kubebuilder:validation:Enum="pending";"granted";"rejected"
 type NodeDisruptionState string
 
 const (
-	Pending    NodeDisruptionState = "pending"
-	Processing NodeDisruptionState = "processing"
-	Granted    NodeDisruptionState = "granted"
-	Rejected   NodeDisruptionState = "rejected"
+	Pending  NodeDisruptionState = "pending"
+	Granted  NodeDisruptionState = "granted"
+	Rejected NodeDisruptionState = "rejected"
 )
 
 // NodeDisruptionSpec defines the desired state of NodeDisruption
@@ -47,6 +48,26 @@ type NodeDisruptionSpec struct {
 
 	// Label query over nodes that will be impacted by the disruption
 	NodeSelector metav1.LabelSelector `json:"nodeSelector,omitempty"`
+	Retry        RetrySpec            `json:"retry,omitempty"`
+}
+
+// Configure the retrying behavior of a NodeDisruption
+type RetrySpec struct {
+	// Enable retrying
+	Enabled bool `json:"enabled,omitempty"`
+	// Deadline after which the disruption is not retried
+	Deadline metav1.Time `json:"deadline,omitempty"`
+}
+
+// Return True if deadline should be taken in account and now is after it
+func (r *RetrySpec) IsAfterDeadline() bool {
+	if !r.Enabled {
+		return false
+	}
+	if r.Deadline.IsZero() {
+		return false
+	}
+	return time.Now().After(r.Deadline.Time)
 }
 
 // NodeDisruptionStatus defines the observed state of NodeDisruption (/!\ it is eventually consistent)
@@ -61,6 +82,8 @@ type NodeDisruptionStatus struct {
 	DisruptedDisruptionBudgets []DisruptedBudgetStatus `json:"disruptedDisruptionBudgets,omitempty"`
 	// List of all the nodes that are disrupted by this NodeDisruption
 	DisruptedNodes []string `json:"disruptedNodes,omitempty"`
+	// Date of the next attempt
+	NextRetryDate metav1.Time `json:"nextRetryDate,omitempty"`
 }
 
 type DisruptedBudgetStatus struct {

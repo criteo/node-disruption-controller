@@ -85,6 +85,17 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              retry:
+                description: Configure the retrying behavior of a NodeDisruption
+                properties:
+                  deadline:
+                    description: Deadline after which the disruption is not retried
+                    format: date-time
+                    type: string
+                  enabled:
+                    description: Enable retrying
+                    type: boolean
+                type: object
             type: object
           status:
             description: NodeDisruptionStatus defines the observed state of NodeDisruption
@@ -123,6 +134,10 @@ spec:
                 items:
                   type: string
                 type: array
+              nextRetryDate:
+                description: Date of the next attempt
+                format: date-time
+                type: string
               state:
                 default: pending
                 description: Disruption status
@@ -130,7 +145,6 @@ spec:
                 - pending
                 - granted
                 - rejected
-                - processing
                 type: string
             type: object
         type: object
