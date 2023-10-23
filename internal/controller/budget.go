@@ -9,17 +9,17 @@ import (
 )
 
 func NewNodeSetFromStringList(nodes []string) *set.Set {
-	node_set := set.New()
+	nodeSet := set.New()
 	for _, node := range nodes {
-		node_set.Insert(node)
+		nodeSet.Insert(node)
 	}
-	return node_set
+	return nodeSet
 }
 
-func NodeSetToStringList(node_set *set.Set) []string {
+func NodeSetToStringList(nodeSet *set.Set) []string {
 	// Iterate over the set and append elements to the slice
-	nodes := make([]string, 0, node_set.Len())
-	node_set.Do(func(item interface{}) {
+	nodes := make([]string, 0, nodeSet.Len())
+	nodeSet.Do(func(item interface{}) {
 		nodes = append(nodes, item.(string))
 	})
 	sort.Strings(nodes)

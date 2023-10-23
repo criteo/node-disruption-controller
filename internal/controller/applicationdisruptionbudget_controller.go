@@ -102,28 +102,28 @@ type ApplicationDisruptionBudgetResolver struct {
 
 // Sync ensure the budget's status is up to date
 func (r *ApplicationDisruptionBudgetResolver) Sync(ctx context.Context) error {
-	node_names, err := r.GetSelectedNodes(ctx)
+	nodeNames, err := r.GetSelectedNodes(ctx)
 	if err != nil {
 		return err
 	}
 
-	nodes := NodeSetToStringList(node_names)
+	nodes := NodeSetToStringList(nodeNames)
 
-	disruption_nr, err := r.ResolveDisruption(ctx)
+	disruptionCount, err := r.ResolveDisruption(ctx)
 	if err != nil {
 		return err
 	}
 
 	r.ApplicationDisruptionBudget.Status.WatchedNodes = nodes
-	r.ApplicationDisruptionBudget.Status.CurrentDisruptions = disruption_nr
-	r.ApplicationDisruptionBudget.Status.DisruptionsAllowed = r.ApplicationDisruptionBudget.Spec.MaxDisruptions - disruption_nr
+	r.ApplicationDisruptionBudget.Status.CurrentDisruptions = disruptionCount
+	r.ApplicationDisruptionBudget.Status.DisruptionsAllowed = r.ApplicationDisruptionBudget.Spec.MaxDisruptions - disruptionCount
 	return nil
 }
 
 // Check if the budget would be impacted by an operation on the provided set of nodes
 func (r *ApplicationDisruptionBudgetResolver) IsImpacted(nd NodeDisruption) bool {
-	watched_nodes := NewNodeSetFromStringList(r.ApplicationDisruptionBudget.Status.WatchedNodes)
-	return watched_nodes.Intersection(nd.ImpactedNodes).Len() > 0
+	watchedNodes := NewNodeSetFromStringList(r.ApplicationDisruptionBudget.Status.WatchedNodes)
+	return watchedNodes.Intersection(nd.ImpactedNodes).Len() > 0
 }
 
 // Return the number of disruption allowed considering a list of current node disruptions
@@ -160,9 +160,8 @@ func (r *ApplicationDisruptionBudgetResolver) CheckHealth(context.Context) error
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
-	} else {
-		return fmt.Errorf("http server responded with non 2XX status code: %s", string(body))
 	}
+	return fmt.Errorf("http server responded with non 2XX status code: %s", string(body))
 }
 
 // Call a lifecycle hook in order to synchronously validate a Node Disruption
@@ -195,28 +194,27 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
-	} else {
-		return fmt.Errorf("http server responded with non 2XX status code: %s", string(body))
 	}
+	return fmt.Errorf("http server responded with non 2XX status code: %s", string(body))
 }
 
 func (r *ApplicationDisruptionBudgetResolver) GetSelectedNodes(ctx context.Context) (*set.Set, error) {
-	node_names := set.New()
+	nodeNames := set.New()
 
-	nodes_from_pods, err := r.Resolver.GetNodesFromNamespacedPodSelector(ctx, r.ApplicationDisruptionBudget.Spec.PodSelector, r.ApplicationDisruptionBudget.Namespace)
+	nodesFromPods, err := r.Resolver.GetNodesFromNamespacedPodSelector(ctx, r.ApplicationDisruptionBudget.Spec.PodSelector, r.ApplicationDisruptionBudget.Namespace)
 	if err != nil {
-		return node_names, err
+		return nodeNames, err
 	}
-	nodes_from_PVCs, err := r.Resolver.GetNodesFromNamespacedPVCSelector(ctx, r.ApplicationDisruptionBudget.Spec.PVCSelector, r.ApplicationDisruptionBudget.Namespace)
+	nodesFromPVCs, err := r.Resolver.GetNodesFromNamespacedPVCSelector(ctx, r.ApplicationDisruptionBudget.Spec.PVCSelector, r.ApplicationDisruptionBudget.Namespace)
 	if err != nil {
-		return node_names, err
+		return nodeNames, err
 	}
 
-	return nodes_from_pods.Union(nodes_from_PVCs), nil
+	return nodesFromPods.Union(nodesFromPVCs), nil
 }
 
 func (r *ApplicationDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (int, error) {
-	selected_nodes, err := r.GetSelectedNodes(ctx)
+	selectedNodes, err := r.GetSelectedNodes(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -224,27 +222,27 @@ func (r *ApplicationDisruptionBudgetResolver) ResolveDisruption(ctx context.Cont
 	disruptions := 0
 
 	opts := []client.ListOption{}
-	node_disruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
+	nodeDisruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
 
-	err = r.Client.List(ctx, node_disruptions, opts...)
+	err = r.Client.List(ctx, nodeDisruptions, opts...)
 	if err != nil {
 		return 0, err
 	}
 
-	for _, nd := range node_disruptions.Items {
+	for _, nd := range nodeDisruptions.Items {
 		if nd.Status.State != nodedisruptionv1alpha1.Granted {
 			continue
 		}
-		node_disruption_resolver := NodeDisruptionResolver{
+		nodeDisruptionResolver := NodeDisruptionResolver{
 			NodeDisruption: &nd,
 			Client:         r.Client,
 		}
-		disruption, err := node_disruption_resolver.GetDisruption(ctx)
+		disruption, err := nodeDisruptionResolver.GetDisruption(ctx)
 		if err != nil {
 			return 0, err
 		}
-		if selected_nodes.Intersection(disruption.ImpactedNodes).Len() > 0 {
-			disruptions += 1
+		if selectedNodes.Intersection(disruption.ImpactedNodes).Len() > 0 {
+			disruptions++
 		}
 	}
 	return disruptions, nil

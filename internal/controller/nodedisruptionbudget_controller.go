@@ -95,37 +95,37 @@ type NodeDisruptionBudgetResolver struct {
 
 // Sync ensure the budget's status is up to date
 func (r *NodeDisruptionBudgetResolver) Sync(ctx context.Context) error {
-	node_names, err := r.GetSelectedNodes(ctx)
+	nodeNames, err := r.GetSelectedNodes(ctx)
 	if err != nil {
 		return err
 	}
 
-	nodes := NodeSetToStringList(node_names)
+	nodes := NodeSetToStringList(nodeNames)
 
-	disruption_nr, err := r.ResolveDisruption(ctx)
+	disruptionCount, err := r.ResolveDisruption(ctx)
 	if err != nil {
 		return err
 	}
 
 	r.NodeDisruptionBudget.Status.WatchedNodes = nodes
-	r.NodeDisruptionBudget.Status.CurrentDisruptions = disruption_nr
-	disruptions_for_max := r.NodeDisruptionBudget.Spec.MaxDisruptedNodes - disruption_nr
-	disruptions_for_min := (len(nodes) - disruption_nr) - r.NodeDisruptionBudget.Spec.MinUndisruptedNodes
-	r.NodeDisruptionBudget.Status.DisruptionsAllowed = int(math.Min(float64(disruptions_for_max), float64(disruptions_for_min))) - disruption_nr
+	r.NodeDisruptionBudget.Status.CurrentDisruptions = disruptionCount
+	disruptionsForMax := r.NodeDisruptionBudget.Spec.MaxDisruptedNodes - disruptionCount
+	disruptionsForMin := (len(nodes) - disruptionCount) - r.NodeDisruptionBudget.Spec.MinUndisruptedNodes
+	r.NodeDisruptionBudget.Status.DisruptionsAllowed = int(math.Min(float64(disruptionsForMax), float64(disruptionsForMin))) - disruptionCount
 
 	return nil
 }
 
 // Check if the budget would be impacted by an operation on the provided set of nodes
 func (r *NodeDisruptionBudgetResolver) IsImpacted(nd NodeDisruption) bool {
-	watched_nodes := NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes)
-	return watched_nodes.Intersection(nd.ImpactedNodes).Len() > 0
+	watchedNodes := NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes)
+	return watchedNodes.Intersection(nd.ImpactedNodes).Len() > 0
 }
 
 // Return the number of disruption allowed considering a list of current node disruptions
-func (r *NodeDisruptionBudgetResolver) TolerateDisruption(disrupted_nodes NodeDisruption) bool {
-	disrupted_nr := NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes).Intersection(disrupted_nodes.ImpactedNodes).Len()
-	return r.NodeDisruptionBudget.Status.DisruptionsAllowed-disrupted_nr >= 0
+func (r *NodeDisruptionBudgetResolver) TolerateDisruption(disruptedNodes NodeDisruption) bool {
+	disruptedNodesCount := NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes).Intersection(disruptedNodes.ImpactedNodes).Len()
+	return r.NodeDisruptionBudget.Status.DisruptionsAllowed-disruptedNodesCount >= 0
 }
 
 // NodeDisruption CheckHealth is always true
@@ -134,7 +134,7 @@ func (r *NodeDisruptionBudgetResolver) CheckHealth(context.Context) error {
 }
 
 // Call a lifecycle hook in order to synchronously validate a Node Disruption
-func (r *NodeDisruptionBudgetResolver) CallHealthHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption) error {
+func (r *NodeDisruptionBudgetResolver) CallHealthHook(_ context.Context, _ nodedisruptionv1alpha1.NodeDisruption) error {
 	return nil
 }
 
@@ -151,18 +151,18 @@ func (r *NodeDisruptionBudgetResolver) GetNamespacedName() nodedisruptionv1alpha
 }
 
 func (r *NodeDisruptionBudgetResolver) GetSelectedNodes(ctx context.Context) (*set.Set, error) {
-	node_names := set.New()
+	nodeNames := set.New()
 
-	nodes_from_pods, err := r.Resolver.GetNodeFromNodeSelector(ctx, r.NodeDisruptionBudget.Spec.NodeSelector)
+	nodesFromPods, err := r.Resolver.GetNodeFromNodeSelector(ctx, r.NodeDisruptionBudget.Spec.NodeSelector)
 	if err != nil {
-		return node_names, err
+		return nodeNames, err
 	}
 
-	return nodes_from_pods, nil
+	return nodesFromPods, nil
 }
 
 func (r *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (int, error) {
-	selected_nodes, err := r.GetSelectedNodes(ctx)
+	selectedNodes, err := r.GetSelectedNodes(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -170,28 +170,28 @@ func (r *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (i
 	disruptions := 0
 
 	opts := []client.ListOption{}
-	node_disruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
+	nodeDisruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
 
-	err = r.Client.List(ctx, node_disruptions, opts...)
+	err = r.Client.List(ctx, nodeDisruptions, opts...)
 	if err != nil {
 		return 0, err
 	}
 
-	for _, nd := range node_disruptions.Items {
+	for _, nd := range nodeDisruptions.Items {
 		if nd.Status.State != nodedisruptionv1alpha1.Granted {
 			continue
 		}
-		node_disruption_resolver := NodeDisruptionResolver{
+		nodeDisruptionResolver := NodeDisruptionResolver{
 			NodeDisruption: &nd,
 			Client:         r.Client,
 		}
 
-		disruption, err := node_disruption_resolver.GetDisruption(ctx)
+		disruption, err := nodeDisruptionResolver.GetDisruption(ctx)
 		if err != nil {
 			return 0, err
 		}
-		if selected_nodes.Intersection(disruption.ImpactedNodes).Len() > 0 {
-			disruptions += 1
+		if selectedNodes.Intersection(disruption.ImpactedNodes).Len() > 0 {
+			disruptions++
 		}
 	}
 	return disruptions, nil

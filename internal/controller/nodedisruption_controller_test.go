@@ -59,7 +59,7 @@ func clearAllNodeDisruptionRessources() {
 
 }
 
-func start_reconciler_with_config(config NodeDisruptionReconcilerConfig) (cancel_fn context.CancelFunc) {
+func startReconcilerWithConfig(config NodeDisruptionReconcilerConfig) (cancelFn context.CancelFunc) {
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		MetricsBindAddress: "127.0.0.1:8081",
 		PprofBindAddress:   "127.0.0.1:8082",
@@ -83,20 +83,20 @@ func start_reconciler_with_config(config NodeDisruptionReconcilerConfig) (cancel
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	manager_ctx, cancel_fn := context.WithCancel(context.Background())
+	managerCtx, cancelFn := context.WithCancel(context.Background())
 
 	go func() {
 		defer GinkgoRecover()
-		err = k8sManager.Start(manager_ctx)
+		err = k8sManager.Start(managerCtx)
 		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
 	}()
-	return cancel_fn
+	return cancelFn
 }
 
-func start_dummy_http_server(handle http.HandlerFunc, listen_addr string) (cancel_fn func()) {
-	test_server := http.NewServeMux()
-	srv := &http.Server{Addr: listen_addr, Handler: test_server}
-	test_server.HandleFunc("/", handle)
+func startDummyHTTPServer(handle http.HandlerFunc, listenAddr string) (cancelFn func()) {
+	testServer := http.NewServeMux()
+	srv := &http.Server{Addr: listenAddr, Handler: testServer}
+	testServer.HandleFunc("/", handle)
 	go func() {
 		defer GinkgoRecover()
 		_ = srv.ListenAndServe()
@@ -117,18 +117,18 @@ var _ = Describe("NodeDisruption controller", func() {
 	)
 
 	var (
-		node_labels1 = map[string]string{
+		nodeLabels1 = map[string]string{
 			"testselect": "test1",
 		}
-		node_labels2 = map[string]string{
+		nodeLabels2 = map[string]string{
 			"testselect": "test2",
 		}
-		pod_labels = map[string]string{
+		podLabels = map[string]string{
 			"testselectpod": "test1",
 		}
 		NDLookupKey = types.NamespacedName{Name: NDName, Namespace: NDNamespace}
 
-		_, cancel_fn = context.WithCancel(context.Background())
+		_, cancelFn = context.WithCancel(context.Background())
 	)
 
 	Context("In a cluster with several nodes", func() {
@@ -138,21 +138,21 @@ var _ = Describe("NodeDisruption controller", func() {
 			node1 := &corev1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   "node1",
-					Labels: node_labels1,
+					Labels: nodeLabels1,
 				},
 			}
 			Expect(k8sClient.Create(ctx, node1)).Should(Succeed())
 			node2 := &corev1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   "node2",
-					Labels: node_labels1,
+					Labels: nodeLabels1,
 				},
 			}
 			Expect(k8sClient.Create(ctx, node2)).Should(Succeed())
 			node3 := &corev1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   "node3",
-					Labels: node_labels2,
+					Labels: nodeLabels2,
 				},
 			}
 			Expect(k8sClient.Create(ctx, node3)).Should(Succeed())
@@ -163,7 +163,7 @@ var _ = Describe("NodeDisruption controller", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pod1",
 					Namespace: "default",
-					Labels:    pod_labels,
+					Labels:    podLabels,
 				},
 				Spec: corev1.PodSpec{
 					NodeName: "node1",
@@ -181,14 +181,14 @@ var _ = Describe("NodeDisruption controller", func() {
 
 		Context("With reconciler with default config", Ordered, func() {
 			BeforeAll(func() {
-				cancel_fn = start_reconciler_with_config(NodeDisruptionReconcilerConfig{
+				cancelFn = startReconcilerWithConfig(NodeDisruptionReconcilerConfig{
 					RejectEmptyNodeDisruption: false,
 					RetryInterval:             time.Second * 1,
 				})
 			})
 
 			AfterAll(func() {
-				cancel_fn()
+				cancelFn()
 			})
 
 			AfterEach(func() {
@@ -208,7 +208,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							Namespace: NDNamespace,
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
-							NodeSelector: metav1.LabelSelector{MatchLabels: node_labels1},
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
 						},
 					}
 					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
@@ -232,27 +232,27 @@ var _ = Describe("NodeDisruption controller", func() {
 
 			When("there are no budgets in the cluster", func() {
 				It("calls the lifecycle hook", func() {
-					mock_host := "localhost:8120"
-					mock_url := "/testurl"
+					mockHost := "localhost:8120"
+					mockURL := "/testurl"
 
 					By("Starting an http server to receive the hook")
 					var (
-						hook_body []byte
-						hook_url  string
+						hookBody []byte
+						hookURL  string
 					)
-					hook_call_count := 0
+					hookCallCount := 0
 
-					check_hook := func(w http.ResponseWriter, req *http.Request) {
+					checkHookFn := func(w http.ResponseWriter, req *http.Request) {
 						var err error
-						hook_body, err = io.ReadAll(req.Body)
+						hookBody, err = io.ReadAll(req.Body)
 						Expect(err).Should(Succeed())
-						hook_url = req.URL.String()
-						hook_call_count += 1
+						hookURL = req.URL.String()
+						hookCallCount++
 						w.WriteHeader(http.StatusOK)
 					}
 
-					http_cancel := start_dummy_http_server(check_hook, mock_host)
-					defer http_cancel()
+					httpCancel := startDummyHTTPServer(checkHookFn, mockHost)
+					defer httpCancel()
 
 					By("creating a budget that accepts one disruption")
 					ndb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
@@ -265,10 +265,10 @@ var _ = Describe("NodeDisruption controller", func() {
 							Namespace: "default",
 						},
 						Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
-							PodSelector:    metav1.LabelSelector{MatchLabels: pod_labels},
+							PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
 							MaxDisruptions: 1,
 							HealthHook: nodedisruptionv1alpha1.HealthHookSpec{
-								URL: fmt.Sprintf("http://%s%s", mock_host, mock_url),
+								URL: fmt.Sprintf("http://%s%s", mockHost, mockURL),
 							},
 						},
 					}
@@ -295,7 +295,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							Namespace: NDNamespace,
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
-							NodeSelector: metav1.LabelSelector{MatchLabels: node_labels1},
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
 						},
 					}
 					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
@@ -316,11 +316,11 @@ var _ = Describe("NodeDisruption controller", func() {
 					Expect(createdDisruption.Status.DisruptedNodes).Should(Equal([]string{"node1", "node2"}))
 
 					By("checking that the lifecyclehook was properly called")
-					Expect(hook_call_count).Should(Equal(1))
-					Expect(hook_url).Should(Equal(mock_url))
-					called_with_disruption := &nodedisruptionv1alpha1.NodeDisruption{}
-					Expect(json.Unmarshal(hook_body, called_with_disruption)).Should(Succeed())
-					Expect(called_with_disruption.Name).Should(Equal(disruption.Name))
+					Expect(hookCallCount).Should(Equal(1))
+					Expect(hookURL).Should(Equal(mockURL))
+					HookDisruption := &nodedisruptionv1alpha1.NodeDisruption{}
+					Expect(json.Unmarshal(hookBody, HookDisruption)).Should(Succeed())
+					Expect(HookDisruption.Name).Should(Equal(disruption.Name))
 				})
 			})
 
@@ -336,7 +336,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							Name: "test",
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionBudgetSpec{
-							NodeSelector:      metav1.LabelSelector{MatchLabels: node_labels1},
+							NodeSelector:      metav1.LabelSelector{MatchLabels: nodeLabels1},
 							MaxDisruptedNodes: 0,
 						},
 					}
@@ -353,7 +353,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							Namespace: NDNamespace,
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
-							NodeSelector: metav1.LabelSelector{MatchLabels: node_labels1},
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
 						},
 					}
 					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
@@ -383,7 +383,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							Name: "test",
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionBudgetSpec{
-							NodeSelector:      metav1.LabelSelector{MatchLabels: node_labels1},
+							NodeSelector:      metav1.LabelSelector{MatchLabels: nodeLabels1},
 							MaxDisruptedNodes: 0,
 						},
 					}
@@ -400,7 +400,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							Namespace: NDNamespace,
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
-							NodeSelector: metav1.LabelSelector{MatchLabels: node_labels1},
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
 							Retry: nodedisruptionv1alpha1.RetrySpec{
 								Enabled: true,
 							},
@@ -451,7 +451,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							Namespace: NDNamespace,
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
-							NodeSelector: metav1.LabelSelector{MatchLabels: node_labels1},
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
 							Retry: nodedisruptionv1alpha1.RetrySpec{
 								Enabled: true,
 								// Deadline is 1s in the past
@@ -497,13 +497,13 @@ var _ = Describe("NodeDisruption controller", func() {
 			})
 			AfterEach(func() {
 				clearAllNodeDisruptionRessources()
-				cancel_fn()
+				cancelFn()
 			})
 
 			When("RejectEmptyNodeDisruption is disabled", func() {
 				It("grants the NodeDisruption", func() {
 					By("starting a reconciler with RejectEmptyNodeDisruption disabled")
-					cancel_fn = start_reconciler_with_config(NodeDisruptionReconcilerConfig{
+					cancelFn = startReconcilerWithConfig(NodeDisruptionReconcilerConfig{
 						RejectEmptyNodeDisruption: false,
 						RetryInterval:             time.Second * 1,
 					})
@@ -521,7 +521,7 @@ var _ = Describe("NodeDisruption controller", func() {
 			When("RejectEmptyNodeDisruption is enabled", func() {
 				It("rejects the NodeDisruption", func() {
 					By("starting a reconciler with RejectEmptyNodeDisruption enabled")
-					cancel_fn = start_reconciler_with_config(NodeDisruptionReconcilerConfig{
+					cancelFn = startReconcilerWithConfig(NodeDisruptionReconcilerConfig{
 						RejectEmptyNodeDisruption: true,
 						RetryInterval:             time.Second * 1,
 					})
