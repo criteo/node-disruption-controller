@@ -133,6 +133,11 @@ func (r *NodeDisruptionBudgetResolver) CheckHealth(context.Context) error {
 	return nil
 }
 
+// Call a lifecycle hook in order to synchronously validate a Node Disruption
+func (r *NodeDisruptionBudgetResolver) CallHealthHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption) error {
+	return nil
+}
+
 func (r *NodeDisruptionBudgetResolver) UpdateStatus(ctx context.Context) error {
 	return r.Client.Status().Update(ctx, r.NodeDisruptionBudget.DeepCopy(), []client.SubResourceUpdateOption{}...)
 }

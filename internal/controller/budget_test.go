@@ -40,6 +40,12 @@ func (m *MockBudget) CheckHealth(context.Context) error {
 	return m.health
 }
 
+// Check health make a synchronous health check on the underlying ressource of a budget
+func (m *MockBudget) CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption) error {
+	m.health_checked = true
+	return m.health
+}
+
 // Apply the budget's status to Kubernetes
 func (m *MockBudget) UpdateStatus(context.Context) error {
 	return nil
@@ -77,7 +83,10 @@ func TestValidationNoImpactedBudget(t *testing.T) {
 }
 
 func TestValidationImpactedAllOk(t *testing.T) {
-	resolver := controller.NodeDisruptionResolver{Client: fake.NewClientBuilder().Build()}
+	resolver := controller.NodeDisruptionResolver{
+		Client:         fake.NewClientBuilder().Build(),
+		NodeDisruption: &nodedisruptionv1alpha1.NodeDisruption{},
+	}
 	nodes := []string{"node-dummy-0", "node-dummy-1"}
 
 	budget1 := MockBudget{

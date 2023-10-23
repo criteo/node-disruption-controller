@@ -34,10 +34,23 @@ type ApplicationDisruptionBudgetSpec struct {
 	PodSelector metav1.LabelSelector `json:"podSelector,omitempty"`
 	// PVCSelector query over PVCs whose nodes are managed by the disruption budget.
 	PVCSelector metav1.LabelSelector `json:"pvcSelector,omitempty"`
+	// Health URL is deprecated and will be removed in next version, please use healthHook instead.
 	// Health URL is an optional URL to call to validate the state of the application.
 	// Maintenance will proceed only if the endpoint responds 2XX.
 	// +kubebuilder:validation:Optional
 	HealthURL *string `json:"healthURL,omitempty"`
+	// Define a optional hook to call when validating a NodeDisruption.
+	// It perform a POST http request containing the NodeDisruption that is being validated.
+	// Maintenance will proceed only if the endpoint responds 2XX.
+	// +kubebuilder:validation:Optional
+	HealthHook HealthHookSpec `json:"healthHook,omitempty"`
+}
+
+type HealthHookSpec struct {
+	// a PEM encoded CA bundle which will be used to validate the webhook's server certificate. If unspecified, system trust roots on the apiserver are used.
+	CaBundle string `json:"caBundle,omitempty"`
+	// URL that will be called by the hook, in standard URL form (`scheme://host:port/path`).
+	URL string `json:"url,omitempty"`
 }
 
 // DisruptionBudgetStatus defines the observed state of ApplicationDisruptionBudget
