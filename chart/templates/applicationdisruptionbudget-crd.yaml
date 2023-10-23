@@ -50,10 +50,27 @@ spec:
               ApplicationDisruptionBudget
             properties:
               healthURL:
-                description: Health URL is an optional URL to call to validate the state
-                  of the application. Maintenance will proceed only if the endpoint
-                  responds 2XX.
+                description: Health URL is deprecated and will be removed in next version,
+                  please use healthHook instead. Health URL is an optional URL to
+                  call to validate the state of the application. Maintenance will proceed
+                  only if the endpoint responds 2XX.
                 type: string
+              healthHook:
+                description: Define a optional hook to call when validating a NodeDisruption.
+                  It perform a POST http request containing the NodeDisruption that
+                  is being validated. Maintenance will proceed only if the endpoint
+                  responds 2XX.
+                properties:
+                  caBundle:
+                    description: a PEM encoded CA bundle which will be used to validate
+                      the webhook's server certificate. If unspecified, system trust
+                      roots on the apiserver are used.
+                    type: string
+                  url:
+                    description: URL that will be called by the hook, in standard URL
+                      form (`scheme://host:port/path`).
+                    type: string
+                type: object
               maxDisruptions:
                 description: A NodeDisruption is allowed if at most "maxDisruptions"
                   nodes selected by selectors are unavailable after the disruption.

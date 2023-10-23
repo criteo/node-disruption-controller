@@ -17,7 +17,9 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -147,6 +149,41 @@ func (r *ApplicationDisruptionBudgetResolver) CheckHealth(context.Context) error
 		return nil
 	}
 	resp, err := http.Get(*r.ApplicationDisruptionBudget.Spec.HealthURL)
+	if err != nil {
+		return err
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	} else {
+		return fmt.Errorf("http server responded with non 2XX status code: %s", string(body))
+	}
+}
+
+// Call a lifecycle hook in order to synchronously validate a Node Disruption
+func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption) error {
+	if r.ApplicationDisruptionBudget.Spec.HealthHook.URL == "" {
+		return nil
+	}
+
+	client := &http.Client{}
+
+	data, err := json.Marshal(nd)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.ApplicationDisruptionBudget.Spec.HealthHook.URL, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
