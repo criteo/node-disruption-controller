@@ -325,6 +325,25 @@ func (ndr *NodeDisruptionResolver) DoValidateDisruption(ctx context.Context, bud
 			logger.Info("Disruption rejected because: ", "status", status)
 			break
 		}
+	}
+
+	if any_failed {
+		return any_failed, statuses
+	}
+
+	for _, budget := range impacted_budgets {
+		err := budget.CallHealthHook(ctx, *ndr.NodeDisruption)
+		if err != nil {
+			any_failed = true
+			status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
+				Reference: budget.GetNamespacedName(),
+				Reason:    fmt.Sprintf("Unhealthy: %s", err),
+				Ok:        false,
+			}
+			statuses = append(statuses, status)
+			logger.Info("Disruption rejected because: ", "status", status)
+			break
+		}
 		statuses = append(statuses, nodedisruptionv1alpha1.DisruptedBudgetStatus{
 			Reference: budget.GetNamespacedName(),
 			Reason:    "",

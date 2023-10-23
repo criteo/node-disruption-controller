@@ -166,14 +166,15 @@ The PVC selector only make sense if you are using local storage and PV have a no
 
 ##### Application level healthcheck
 
-It is possible to configure an healthiness URL for a service. If the budget authorize one more disruption
-the endpoint will be called: if the status code is different 2XX, the disruption will be rejected.
+It is possible to configure an healthiness URL for a service. If the budget authorize one more disruption, the endpoint will be called: if the status code is different 2XX, the disruption will be rejected.
 
 This has 2 purposes:
 - Making sure the controller taking care of the application is alive
 - The global state of the application is healthy
 
-It is not a replacement for readiness probes but a complement
+The hook will be called with a POST method containing the JSON encoded NodeDisruption the controller is trying to validate.
+
+Note: It is not a replacement for readiness probes but a complement.
 
 #### Sample object
 
@@ -195,7 +196,8 @@ spec:
   pvcSelect: # Optional: Select PVCs to protect by the budget
     matchLabels:
       app: nginx
-  healthURL: http://someurl/health # Optional URL to call before granting a disruption
+  healthHook:
+    url: http://someurl/health # Optional URL to call before granting a disruption
 ```
 
 ### NodeDisruptionBudget

@@ -39,6 +39,8 @@ type Budget interface {
 	TolerateDisruption(NodeDisruption) bool
 	// Check health make a synchronous health check on the underlying ressource of a budget
 	CheckHealth(context.Context) error
+	// Call a lifecycle hook in order to synchronously validate a Node Disruption
+	CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption) error
 	// Apply the budget's status to Kubernetes
 	UpdateStatus(context.Context) error
 	// Get the name, namespace and kind of bduget
