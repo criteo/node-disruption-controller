@@ -16,8 +16,8 @@ type MockBudget struct {
 	impacted bool
 	tolerate bool
 	// True if the budget was health checked
-	health_checked bool
-	health         error
+	healthChecked bool
+	health        error
 }
 
 func (m *MockBudget) Sync(context.Context) error {
@@ -36,13 +36,13 @@ func (m *MockBudget) TolerateDisruption(controller.NodeDisruption) bool {
 
 // Check health make a synchronous health check on the underlying ressource of a budget
 func (m *MockBudget) CheckHealth(context.Context) error {
-	m.health_checked = true
+	m.healthChecked = true
 	return m.health
 }
 
 // Check health make a synchronous health check on the underlying ressource of a budget
 func (m *MockBudget) CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption) error {
-	m.health_checked = true
+	m.healthChecked = true
 	return m.health
 }
 
@@ -77,8 +77,8 @@ func TestValidationNoImpactedBudget(t *testing.T) {
 	budgets := []controller.Budget{&budget1, &budget2}
 
 	disruption := controller.NodeDisruption{controller.NewNodeSetFromStringList(nodes)}
-	any_failed, statuses := resolver.DoValidateDisruption(context.Background(), budgets, disruption)
-	assert.False(t, any_failed)
+	anyFailed, statuses := resolver.DoValidateDisruption(context.Background(), budgets, disruption)
+	assert.False(t, anyFailed)
 	assert.Equal(t, len(statuses), 0)
 }
 
@@ -106,8 +106,8 @@ func TestValidationImpactedAllOk(t *testing.T) {
 	budgets := []controller.Budget{&budget1, &budget2}
 
 	disruption := controller.NodeDisruption{controller.NewNodeSetFromStringList(nodes)}
-	any_failed, statuses := resolver.DoValidateDisruption(context.Background(), budgets, disruption)
-	assert.False(t, any_failed)
+	anyFailed, statuses := resolver.DoValidateDisruption(context.Background(), budgets, disruption)
+	assert.False(t, anyFailed)
 	assert.Equal(t, len(statuses), 2)
 }
 
@@ -132,14 +132,14 @@ func TestValidationFailAtDisruption(t *testing.T) {
 	budgets := []controller.Budget{&budget1, &budget2}
 
 	disruption := controller.NodeDisruption{controller.NewNodeSetFromStringList(nodes)}
-	any_failed, statuses := resolver.DoValidateDisruption(context.Background(), budgets, disruption)
-	assert.True(t, any_failed)
+	anyFailed, statuses := resolver.DoValidateDisruption(context.Background(), budgets, disruption)
+	assert.True(t, anyFailed)
 	assert.Equal(t, len(statuses), 1)
 	assert.False(t, statuses[0].Ok)
 	assert.NotEmpty(t, statuses[0].Reason, "Rejected budget should provide a reason")
 
-	assert.False(t, budget1.health_checked, "Health check should not be made if disruption check failed")
-	assert.False(t, budget2.health_checked, "Health check should not be made if disruption check failed")
+	assert.False(t, budget1.healthChecked, "Health check should not be made if disruption check failed")
+	assert.False(t, budget2.healthChecked, "Health check should not be made if disruption check failed")
 }
 
 func TestValidationFailAtHealth(t *testing.T) {
@@ -163,9 +163,9 @@ func TestValidationFailAtHealth(t *testing.T) {
 	budgets := []controller.Budget{&budget1, &budget2}
 
 	disruption := controller.NodeDisruption{controller.NewNodeSetFromStringList(nodes)}
-	any_failed, statuses := resolver.DoValidateDisruption(context.Background(), budgets, disruption)
-	assert.True(t, any_failed)
+	anyFailed, statuses := resolver.DoValidateDisruption(context.Background(), budgets, disruption)
+	assert.True(t, anyFailed)
 	assert.False(t, statuses[0].Ok)
 	assert.NotEmpty(t, statuses[0].Reason, "Rejected budget should provide a reason")
-	assert.True(t, budget1.health_checked)
+	assert.True(t, budget1.healthChecked)
 }
