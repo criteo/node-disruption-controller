@@ -24,3 +24,46 @@ type Budget interface {
 	// Get the name, namespace and kind of bduget
 	GetNamespacedName() nodedisruptionv1alpha1.NamespacedName
 }
+
+// GetAllBudgetsInSync fetch all the budgets from Kubernetes and synchronise them
+func GetAllBudgetsInSync(ctx context.Context, k8sClient client.Client) ([]Budget, error) {
+	opts := []client.ListOption{}
+	budgets := []Budget{}
+
+	applicationDisruptionBudgets := &nodedisruptionv1alpha1.ApplicationDisruptionBudgetList{}
+	err := k8sClient.List(ctx, applicationDisruptionBudgets, opts...)
+	if err != nil {
+		return budgets, err
+	}
+	for _, adb := range applicationDisruptionBudgets.Items {
+		adbResolver := ApplicationDisruptionBudgetResolver{
+			ApplicationDisruptionBudget: adb.DeepCopy(),
+			Client:                      k8sClient,
+			Resolver:                    resolver.Resolver{Client: k8sClient},
+		}
+		budgets = append(budgets, &adbResolver)
+	}
+
+	nodeDisruptionBudget := &nodedisruptionv1alpha1.NodeDisruptionBudgetList{}
+	err = k8sClient.List(ctx, nodeDisruptionBudget, opts...)
+	if err != nil {
+		return budgets, err
+	}
+	for _, ndb := range nodeDisruptionBudget.Items {
+		ndbResolver := NodeDisruptionBudgetResolver{
+			NodeDisruptionBudget: ndb.DeepCopy(),
+			Client:               k8sClient,
+			Resolver:             resolver.Resolver{Client: k8sClient},
+		}
+		budgets = append(budgets, &ndbResolver)
+	}
+
+	for _, budget := range budgets {
+		err := budget.Sync(ctx)
+		if err != nil {
+			return budgets, err
+		}
+	}
+
+	return budgets, nil
+}
