@@ -28,7 +28,6 @@ import (
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
-	"github.com/golang-collections/collections/set"
 )
 
 // NodeDisruptionBudgetReconciler reconciles a NodeDisruptionBudget object
@@ -100,7 +99,7 @@ func (r *NodeDisruptionBudgetResolver) Sync(ctx context.Context) error {
 		return err
 	}
 
-	nodes := NodeSetToStringList(nodeNames)
+	nodes := resolver.NodeSetToStringList(nodeNames)
 
 	disruptionCount, err := r.ResolveDisruption(ctx)
 	if err != nil {
@@ -117,14 +116,15 @@ func (r *NodeDisruptionBudgetResolver) Sync(ctx context.Context) error {
 }
 
 // Check if the budget would be impacted by an operation on the provided set of nodes
-func (r *NodeDisruptionBudgetResolver) IsImpacted(nd NodeDisruption) bool {
-	watchedNodes := NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes)
-	return watchedNodes.Intersection(nd.ImpactedNodes).Len() > 0
+func (r *NodeDisruptionBudgetResolver) IsImpacted(disruptedNodes resolver.NodeSet) bool {
+	watchedNodes := resolver.NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes)
+	return watchedNodes.Intersection(disruptedNodes).Len() > 0
 }
 
 // Return the number of disruption allowed considering a list of current node disruptions
-func (r *NodeDisruptionBudgetResolver) TolerateDisruption(disruptedNodes NodeDisruption) bool {
-	disruptedNodesCount := NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes).Intersection(disruptedNodes.ImpactedNodes).Len()
+func (r *NodeDisruptionBudgetResolver) TolerateDisruption(disruptedNodes resolver.NodeSet) bool {
+	watchedNodes := resolver.NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes)
+	disruptedNodesCount := watchedNodes.Intersection(disruptedNodes).Len()
 	return r.NodeDisruptionBudget.Status.DisruptionsAllowed-disruptedNodesCount >= 0
 }
 
@@ -150,12 +150,10 @@ func (r *NodeDisruptionBudgetResolver) GetNamespacedName() nodedisruptionv1alpha
 	}
 }
 
-func (r *NodeDisruptionBudgetResolver) GetSelectedNodes(ctx context.Context) (*set.Set, error) {
-	nodeNames := set.New()
-
+func (r *NodeDisruptionBudgetResolver) GetSelectedNodes(ctx context.Context) (resolver.NodeSet, error) {
 	nodesFromPods, err := r.Resolver.GetNodeFromNodeSelector(ctx, r.NodeDisruptionBudget.Spec.NodeSelector)
 	if err != nil {
-		return nodeNames, err
+		return resolver.NodeSet{}, err
 	}
 
 	return nodesFromPods, nil
@@ -181,16 +179,12 @@ func (r *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (i
 		if nd.Status.State != nodedisruptionv1alpha1.Granted {
 			continue
 		}
-		nodeDisruptionResolver := NodeDisruptionResolver{
-			NodeDisruption: &nd,
-			Client:         r.Client,
-		}
 
-		disruption, err := nodeDisruptionResolver.GetDisruption(ctx)
+		impactedNodes, err := r.Resolver.GetNodeFromNodeSelector(ctx, nd.Spec.NodeSelector)
 		if err != nil {
 			return 0, err
 		}
-		if selectedNodes.Intersection(disruption.ImpactedNodes).Len() > 0 {
+		if selectedNodes.Intersection(impactedNodes).Len() > 0 {
 			disruptions++
 		}
 	}

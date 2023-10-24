@@ -32,8 +32,6 @@ import (
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
-
-	"github.com/golang-collections/collections/set"
 )
 
 // ApplicationDisruptionBudgetReconciler reconciles a ApplicationDisruptionBudget object
@@ -107,7 +105,7 @@ func (r *ApplicationDisruptionBudgetResolver) Sync(ctx context.Context) error {
 		return err
 	}
 
-	nodes := NodeSetToStringList(nodeNames)
+	nodes := resolver.NodeSetToStringList(nodeNames)
 
 	disruptionCount, err := r.ResolveDisruption(ctx)
 	if err != nil {
@@ -121,13 +119,13 @@ func (r *ApplicationDisruptionBudgetResolver) Sync(ctx context.Context) error {
 }
 
 // Check if the budget would be impacted by an operation on the provided set of nodes
-func (r *ApplicationDisruptionBudgetResolver) IsImpacted(nd NodeDisruption) bool {
-	watchedNodes := NewNodeSetFromStringList(r.ApplicationDisruptionBudget.Status.WatchedNodes)
-	return watchedNodes.Intersection(nd.ImpactedNodes).Len() > 0
+func (r *ApplicationDisruptionBudgetResolver) IsImpacted(disruptedNodes resolver.NodeSet) bool {
+	watchedNodes := resolver.NewNodeSetFromStringList(r.ApplicationDisruptionBudget.Status.WatchedNodes)
+	return watchedNodes.Intersection(disruptedNodes).Len() > 0
 }
 
 // Return the number of disruption allowed considering a list of current node disruptions
-func (r *ApplicationDisruptionBudgetResolver) TolerateDisruption(NodeDisruption) bool {
+func (r *ApplicationDisruptionBudgetResolver) TolerateDisruption(_ resolver.NodeSet) bool {
 	return r.ApplicationDisruptionBudget.Status.DisruptionsAllowed-1 >= 0
 }
 
@@ -198,8 +196,8 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 	return fmt.Errorf("http server responded with non 2XX status code: %s", string(body))
 }
 
-func (r *ApplicationDisruptionBudgetResolver) GetSelectedNodes(ctx context.Context) (*set.Set, error) {
-	nodeNames := set.New()
+func (r *ApplicationDisruptionBudgetResolver) GetSelectedNodes(ctx context.Context) (resolver.NodeSet, error) {
+	nodeNames := resolver.NodeSet{}
 
 	nodesFromPods, err := r.Resolver.GetNodesFromNamespacedPodSelector(ctx, r.ApplicationDisruptionBudget.Spec.PodSelector, r.ApplicationDisruptionBudget.Namespace)
 	if err != nil {
@@ -233,15 +231,12 @@ func (r *ApplicationDisruptionBudgetResolver) ResolveDisruption(ctx context.Cont
 		if nd.Status.State != nodedisruptionv1alpha1.Granted {
 			continue
 		}
-		nodeDisruptionResolver := NodeDisruptionResolver{
-			NodeDisruption: &nd,
-			Client:         r.Client,
-		}
-		disruption, err := nodeDisruptionResolver.GetDisruption(ctx)
+
+		impactedNodes, err := r.Resolver.GetNodeFromNodeSelector(ctx, nd.Spec.NodeSelector)
 		if err != nil {
 			return 0, err
 		}
-		if selectedNodes.Intersection(disruption.ImpactedNodes).Len() > 0 {
+		if selectedNodes.Intersection(impactedNodes).Len() > 0 {
 			disruptions++
 		}
 	}
