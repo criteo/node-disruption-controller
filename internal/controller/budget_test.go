@@ -26,12 +26,12 @@ func (m *MockBudget) Sync(context.Context) error {
 }
 
 // Check if the budget would be impacted by an operation on the provided set of nodes
-func (m *MockBudget) IsImpacted(controller.NodeDisruption) bool {
+func (m *MockBudget) IsImpacted(resolver.NodeSet) bool {
 	return m.impacted
 }
 
 // Return the number of disruption allowed considering a list of current node disruptions
-func (m *MockBudget) TolerateDisruption(controller.NodeDisruption) bool {
+func (m *MockBudget) TolerateDisruption(resolver.NodeSet) bool {
 	return m.tolerate
 }
 
@@ -57,9 +57,16 @@ func (m *MockBudget) GetNamespacedName() nodedisruptionv1alpha1.NamespacedName {
 	return m.name
 }
 
-func TestValidationNoImpactedBudget(t *testing.T) {
-	resolver := controller.NodeDisruptionResolver{Client: fake.NewClientBuilder().Build()}
+func TestValidateWithBudgetConstraintsNoImpactedBudget(t *testing.T) {
 	nodes := []string{"node-dummy-0", "node-dummy-1"}
+	reconciler := controller.SingleNodeDisruptionReconciler{
+		Client: fake.NewClientBuilder().Build(),
+		NodeDisruption: nodedisruptionv1alpha1.NodeDisruption{
+			Status: nodedisruptionv1alpha1.NodeDisruptionStatus{
+				DisruptedNodes: nodes,
+			},
+		},
+	}
 
 	budget1 := MockBudget{
 		name:     nodedisruptionv1alpha1.NamespacedName{Namespace: "test1", Name: "test1"},
@@ -76,19 +83,21 @@ func TestValidationNoImpactedBudget(t *testing.T) {
 	}
 
 	budgets := []controller.Budget{&budget1, &budget2}
-
-	disruption := controller.NodeDisruption{controller.NewNodeSetFromStringList(nodes)}
-	anyFailed, statuses := resolver.DoValidateDisruption(context.Background(), budgets, disruption)
+	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets)
 	assert.False(t, anyFailed)
 	assert.Equal(t, len(statuses), 0)
 }
 
 func TestValidationImpactedAllOk(t *testing.T) {
-	resolver := controller.NodeDisruptionResolver{
-		Client:         fake.NewClientBuilder().Build(),
-		NodeDisruption: &nodedisruptionv1alpha1.NodeDisruption{},
-	}
 	nodes := []string{"node-dummy-0", "node-dummy-1"}
+	reconciler := controller.SingleNodeDisruptionReconciler{
+		Client: fake.NewClientBuilder().Build(),
+		NodeDisruption: nodedisruptionv1alpha1.NodeDisruption{
+			Status: nodedisruptionv1alpha1.NodeDisruptionStatus{
+				DisruptedNodes: nodes,
+			},
+		},
+	}
 
 	budget1 := MockBudget{
 		name:     nodedisruptionv1alpha1.NamespacedName{Namespace: "test1", Name: "test1"},
@@ -106,15 +115,21 @@ func TestValidationImpactedAllOk(t *testing.T) {
 
 	budgets := []controller.Budget{&budget1, &budget2}
 
-	disruption := controller.NodeDisruption{controller.NewNodeSetFromStringList(nodes)}
-	anyFailed, statuses := resolver.DoValidateDisruption(context.Background(), budgets, disruption)
+	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets)
 	assert.False(t, anyFailed)
 	assert.Equal(t, len(statuses), 2)
 }
 
-func TestValidationFailAtDisruption(t *testing.T) {
-	resolver := controller.NodeDisruptionResolver{Client: fake.NewClientBuilder().Build()}
+func TestValidateWithBudgetConstraintsFailAtDisruption(t *testing.T) {
 	nodes := []string{"node-dummy-0", "node-dummy-1"}
+	reconciler := controller.SingleNodeDisruptionReconciler{
+		Client: fake.NewClientBuilder().Build(),
+		NodeDisruption: nodedisruptionv1alpha1.NodeDisruption{
+			Status: nodedisruptionv1alpha1.NodeDisruptionStatus{
+				DisruptedNodes: nodes,
+			},
+		},
+	}
 
 	budget1 := MockBudget{
 		name:     nodedisruptionv1alpha1.NamespacedName{Namespace: "test1", Name: "test1"},
@@ -132,8 +147,7 @@ func TestValidationFailAtDisruption(t *testing.T) {
 
 	budgets := []controller.Budget{&budget1, &budget2}
 
-	disruption := controller.NodeDisruption{controller.NewNodeSetFromStringList(nodes)}
-	anyFailed, statuses := resolver.DoValidateDisruption(context.Background(), budgets, disruption)
+	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets)
 	assert.True(t, anyFailed)
 	assert.Equal(t, len(statuses), 1)
 	assert.False(t, statuses[0].Ok)
@@ -143,9 +157,16 @@ func TestValidationFailAtDisruption(t *testing.T) {
 	assert.False(t, budget2.healthChecked, "Health check should not be made if disruption check failed")
 }
 
-func TestValidationFailAtHealth(t *testing.T) {
-	resolver := controller.NodeDisruptionResolver{Client: fake.NewClientBuilder().Build()}
+func TestValidateWithBudgetConstraintsFailAtHealth(t *testing.T) {
 	nodes := []string{"node-dummy-0", "node-dummy-1"}
+	reconciler := controller.SingleNodeDisruptionReconciler{
+		Client: fake.NewClientBuilder().Build(),
+		NodeDisruption: nodedisruptionv1alpha1.NodeDisruption{
+			Status: nodedisruptionv1alpha1.NodeDisruptionStatus{
+				DisruptedNodes: nodes,
+			},
+		},
+	}
 
 	budget1 := MockBudget{
 		name:     nodedisruptionv1alpha1.NamespacedName{Namespace: "test1", Name: "test1"},
@@ -163,8 +184,7 @@ func TestValidationFailAtHealth(t *testing.T) {
 
 	budgets := []controller.Budget{&budget1, &budget2}
 
-	disruption := controller.NodeDisruption{controller.NewNodeSetFromStringList(nodes)}
-	anyFailed, statuses := resolver.DoValidateDisruption(context.Background(), budgets, disruption)
+	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets)
 	assert.True(t, anyFailed)
 	assert.False(t, statuses[0].Ok)
 	assert.NotEmpty(t, statuses[0].Reason, "Rejected budget should provide a reason")
