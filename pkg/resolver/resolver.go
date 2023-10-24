@@ -3,6 +3,7 @@ package resolver
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/golang-collections/collections/set"
@@ -22,12 +23,48 @@ type Resolver struct {
 	Client client.Client
 }
 
+// NodeSet is a set of (Kubernetes) Node names stored as string
+type NodeSet struct {
+	Nodes *set.Set
+}
+
+func (ns *NodeSet) Intersection(other NodeSet) NodeSet {
+	return NodeSet{Nodes: ns.Nodes.Intersection(other.Nodes)}
+}
+
+func (ns NodeSet) Len() int {
+	return ns.Nodes.Len()
+}
+
+func (ns *NodeSet) Union(other NodeSet) NodeSet {
+	return NodeSet{Nodes: ns.Nodes.Union(other.Nodes)}
+}
+
+func NewNodeSetFromStringList(nodes []string) NodeSet {
+	nodeSet := set.New()
+	for _, node := range nodes {
+		nodeSet.Insert(node)
+	}
+	return NodeSet{Nodes: nodeSet}
+}
+
+func NodeSetToStringList(nodeSet NodeSet) []string {
+	// Iterate over the set and append elements to the slice
+	nodes := make([]string, 0, nodeSet.Nodes.Len())
+	nodeSet.Nodes.Do(func(item interface{}) {
+		nodes = append(nodes, item.(string))
+	})
+	sort.Strings(nodes)
+	return nodes
+}
+
 // GetNodesFromNamespacedPodSelector find the nodes used by pods matched for a pod selector and in a given namespace
-func (r *Resolver) GetNodesFromNamespacedPodSelector(ctx context.Context, podSelector metav1.LabelSelector, namespace string) (*set.Set, error) {
+func (r *Resolver) GetNodesFromNamespacedPodSelector(ctx context.Context, podSelector metav1.LabelSelector, namespace string) (NodeSet, error) {
 	nodeNames := set.New()
+	nodeSet := NodeSet{Nodes: nodeNames}
 	selector, err := metav1.LabelSelectorAsSelector(&podSelector)
 	if err != nil || selector.Empty() {
-		return nodeNames, err
+		return nodeSet, err
 	}
 	opts := []client.ListOption{
 		client.InNamespace(namespace),
@@ -36,13 +73,13 @@ func (r *Resolver) GetNodesFromNamespacedPodSelector(ctx context.Context, podSel
 	pods := &corev1.PodList{}
 	err = r.Client.List(ctx, pods, opts...)
 	if err != nil {
-		return nodeNames, err
+		return nodeSet, err
 	}
 
 	for _, pod := range pods.Items {
 		nodeNames.Insert(pod.Spec.NodeName)
 	}
-	return nodeNames, nil
+	return nodeSet, nil
 }
 
 // NodeLabelSelectorAsRequirement converts a NodeSelectorRequirement to a labels.Requirement
@@ -102,11 +139,13 @@ func NodeSelectorAsSelector(nodeSelector *corev1.NodeSelector) (labels.Selector,
 	return labelSelector, fieldSelector, err
 }
 
-func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSelector metav1.LabelSelector, namespace string) (*set.Set, error) {
+func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSelector metav1.LabelSelector, namespace string) (NodeSet, error) {
 	nodeNames := set.New()
+	nodeSet := NodeSet{Nodes: nodeNames}
+
 	selector, err := metav1.LabelSelectorAsSelector(&pvcSelector)
 	if err != nil {
-		return nodeNames, err
+		return nodeSet, err
 	}
 	opts := []client.ListOption{
 		client.InNamespace(namespace),
@@ -115,7 +154,7 @@ func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSel
 	PVCs := &corev1.PersistentVolumeClaimList{}
 	err = r.Client.List(ctx, PVCs, opts...)
 	if err != nil {
-		return nodeNames, err
+		return nodeSet, err
 	}
 
 	PVsToFetch := []string{}
@@ -130,7 +169,7 @@ func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSel
 
 		err = r.Client.Get(ctx, types.NamespacedName{Name: PVName, Namespace: ""}, pv, getOptions...)
 		if err != nil {
-			return nodeNames, err
+			return nodeSet, err
 		}
 
 		nodeSelector := pv.Spec.NodeAffinity.Required
@@ -141,7 +180,7 @@ func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSel
 		opts := []client.ListOption{}
 		labelSelector, fieldSelector, err := NodeSelectorAsSelector(nodeSelector)
 		if err != nil {
-			return nodeNames, err
+			return nodeSet, err
 		}
 
 		if labelSelector.Empty() && fieldSelector.Empty() {
@@ -161,7 +200,7 @@ func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSel
 		nodes := &corev1.NodeList{}
 		err = r.Client.List(ctx, nodes, opts...)
 		if err != nil {
-			return nodeNames, err
+			return nodeSet, err
 		}
 
 		for _, node := range nodes.Items {
@@ -169,14 +208,16 @@ func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSel
 		}
 	}
 
-	return nodeNames, nil
+	return nodeSet, nil
 }
 
-func (r *Resolver) GetNodeFromNodeSelector(ctx context.Context, nodeSelector metav1.LabelSelector) (*set.Set, error) {
+func (r *Resolver) GetNodeFromNodeSelector(ctx context.Context, nodeSelector metav1.LabelSelector) (NodeSet, error) {
 	nodeNames := set.New()
+	nodeSet := NodeSet{Nodes: nodeNames}
+
 	selector, err := metav1.LabelSelectorAsSelector(&nodeSelector)
 	if err != nil || selector.Empty() {
-		return nodeNames, err
+		return nodeSet, err
 	}
 	opts := []client.ListOption{
 		client.MatchingLabelsSelector{Selector: selector},
@@ -184,11 +225,11 @@ func (r *Resolver) GetNodeFromNodeSelector(ctx context.Context, nodeSelector met
 	nodes := &corev1.NodeList{}
 	err = r.Client.List(ctx, nodes, opts...)
 	if err != nil {
-		return nodeNames, err
+		return nodeSet, err
 	}
 
 	for _, node := range nodes.Items {
 		nodeNames.Insert(node.ObjectMeta.Name)
 	}
-	return nodeNames, nil
+	return nodeSet, nil
 }
