@@ -17,11 +17,16 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,6 +53,41 @@ func TestControllers(t *testing.T) {
 	RunSpecs(t, "Controller Suite")
 }
 
+func newPVforNode(nodeName string) (pv corev1.PersistentVolume) {
+	ressources := make(corev1.ResourceList, 1)
+	ressources[corev1.ResourceStorage] = *resource.NewQuantity(100, ressources.Memory().Format)
+	return corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("%s-pv-local", nodeName),
+		},
+		Spec: corev1.PersistentVolumeSpec{
+			Capacity:               ressources,
+			AccessModes:            []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			PersistentVolumeSource: corev1.PersistentVolumeSource{Local: &corev1.LocalVolumeSource{Path: "path/to/nothing"}},
+			NodeAffinity: &corev1.VolumeNodeAffinity{Required: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{
+					{
+						MatchExpressions: []corev1.NodeSelectorRequirement{{
+							Key:      "kubernetes.io/hostname",
+							Operator: corev1.NodeSelectorOpIn,
+							Values:   []string{nodeName},
+						}},
+					},
+				},
+			}},
+		},
+	}
+}
+
+var (
+	nodeLabels1 = map[string]string{
+		"testselect": "test1",
+	}
+	podLabels = map[string]string{
+		"testselectpod": "test1",
+	}
+)
+
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
@@ -71,6 +111,48 @@ var _ = BeforeSuite(func() {
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
+
+	ctx := context.Background()
+	labels := map[string]string{
+		"testselect":             "test1",
+		"kubernetes.io/hostname": "node1",
+	}
+	node1 := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "node1",
+			Labels: labels,
+		},
+	}
+	Expect(k8sClient.Create(ctx, node1)).Should(Succeed())
+	labels = map[string]string{
+		"testselect":             "test1",
+		"kubernetes.io/hostname": "node2",
+	}
+	node2 := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "node2",
+			Labels: labels,
+		},
+	}
+	Expect(k8sClient.Create(ctx, node2)).Should(Succeed())
+	labels = map[string]string{
+		"testselect":             "test2",
+		"kubernetes.io/hostname": "node3",
+	}
+	node3 := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "node3",
+			Labels: labels,
+		},
+	}
+	Expect(k8sClient.Create(ctx, node3)).Should(Succeed())
+
+	pv1 := newPVforNode("node1")
+	Expect(k8sClient.Create(ctx, &pv1)).Should(Succeed())
+	pv2 := newPVforNode("node2")
+	Expect(k8sClient.Create(ctx, &pv2)).Should(Succeed())
+	pv3 := newPVforNode("node3")
+	Expect(k8sClient.Create(ctx, &pv3)).Should(Succeed())
 })
 
 var _ = AfterSuite(func() {
