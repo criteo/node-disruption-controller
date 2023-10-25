@@ -117,46 +117,14 @@ var _ = Describe("NodeDisruption controller", func() {
 	)
 
 	var (
-		nodeLabels1 = map[string]string{
-			"testselect": "test1",
-		}
-		nodeLabels2 = map[string]string{
-			"testselect": "test2",
-		}
-		podLabels = map[string]string{
-			"testselectpod": "test1",
-		}
 		NDLookupKey = types.NamespacedName{Name: NDName, Namespace: NDNamespace}
 
 		_, cancelFn = context.WithCancel(context.Background())
 	)
 
-	Context("In a cluster with several nodes", func() {
+	Context("In a cluster with pods", func() {
 		ctx := context.Background()
-		It("Create the nodes and pods", func() {
-			By("Adding Nodes")
-			node1 := &corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   "node1",
-					Labels: nodeLabels1,
-				},
-			}
-			Expect(k8sClient.Create(ctx, node1)).Should(Succeed())
-			node2 := &corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   "node2",
-					Labels: nodeLabels1,
-				},
-			}
-			Expect(k8sClient.Create(ctx, node2)).Should(Succeed())
-			node3 := &corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   "node3",
-					Labels: nodeLabels2,
-				},
-			}
-			Expect(k8sClient.Create(ctx, node3)).Should(Succeed())
-
+		It("Create pods", func() {
 			By("Adding Pods")
 			pod1 := &corev1.Pod{
 				TypeMeta: metav1.TypeMeta{},
@@ -281,8 +249,7 @@ var _ = Describe("NodeDisruption controller", func() {
 						err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
 						Expect(err).Should(Succeed())
 						return createdADB.Status.WatchedNodes
-					}, timeout, interval).ShouldNot(BeEmpty())
-					Expect(createdADB.Status.WatchedNodes).Should(Equal([]string{"node1"}))
+					}, timeout, interval).Should(Equal([]string{"node1"}))
 
 					By("creating a new NodeDisruption")
 					disruption := &nodedisruptionv1alpha1.NodeDisruption{

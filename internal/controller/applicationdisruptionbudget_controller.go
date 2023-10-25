@@ -26,9 +26,17 @@ import (
 	"reflect"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
@@ -56,6 +64,7 @@ type ApplicationDisruptionBudgetReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
 	adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
 	err := r.Client.Get(ctx, req.NamespacedName, adb)
 
@@ -66,6 +75,8 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 		}
 		return ctrl.Result{}, err
 	}
+
+	logger.Info("Start reconcile of ADB", "version", adb.ResourceVersion)
 
 	resolver := ApplicationDisruptionBudgetResolver{
 		ApplicationDisruptionBudget: adb.DeepCopy(),
@@ -79,16 +90,53 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 	}
 
 	if !reflect.DeepEqual(resolver.ApplicationDisruptionBudget.Status, adb.Status) {
+		logger.Info("Updating with", "version", adb.ResourceVersion)
 		err = resolver.UpdateStatus(ctx)
 	}
 
 	return ctrl.Result{}, err
 }
 
+// MapFuncBuilder returns a MapFunc that is used to dispatch reconcile requests to
+// budgets when an event is triggered by one of their matching object
+func (r *ApplicationDisruptionBudgetReconciler) MapFuncBuilder() handler.MapFunc {
+	// Look for all ADBs in the namespace, then see if they match the object
+	return func(ctx context.Context, object client.Object) (requests []reconcile.Request) {
+		adbs := nodedisruptionv1alpha1.ApplicationDisruptionBudgetList{}
+		err := r.Client.List(ctx, &adbs, &client.ListOptions{Namespace: object.GetNamespace()})
+		if err != nil {
+			// We cannot return an error so at least it should be logged
+			logger := log.FromContext(context.Background())
+			logger.Error(err, "Could not list ADBs in watch function")
+			return requests
+		}
+
+		for _, adb := range adbs.Items {
+			if adb.SelectorMatchesObject(object) {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Name:      adb.Name,
+						Namespace: adb.Namespace,
+					},
+				})
+			}
+		}
+		return requests
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *ApplicationDisruptionBudgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nodedisruptionv1alpha1.ApplicationDisruptionBudget{}).
+		Watches(
+			&corev1.Pod{},
+			handler.EnqueueRequestsFromMapFunc(r.MapFuncBuilder()),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
+		Watches(
+			&corev1.PersistentVolumeClaim{},
+			handler.EnqueueRequestsFromMapFunc(r.MapFuncBuilder()),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
 		Complete(r)
 }
 
