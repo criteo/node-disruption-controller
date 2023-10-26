@@ -17,7 +17,10 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -51,6 +54,23 @@ type NodeDisruptionBudget struct {
 
 	Spec   NodeDisruptionBudgetSpec `json:"spec,omitempty"`
 	Status DisruptionBudgetStatus   `json:"status,omitempty"`
+}
+
+// SelectorMatchesObject return true if the object is matched by one of the selectors
+func (adb *NodeDisruptionBudget) SelectorMatchesObject(object client.Object) bool {
+	objectLabelSet := labels.Set(object.GetLabels())
+
+	switch object.(type) {
+	case *corev1.Node:
+		selector, _ := metav1.LabelSelectorAsSelector(&adb.Spec.NodeSelector)
+		return selector.Matches(objectLabelSet)
+	case *NodeDisruption:
+		// It is faster to trigger a reconcile for each ADB instead of checking if the
+		// Node Disruption is impacting the current ADB
+		return true
+	default:
+		return false
+	}
 }
 
 //+kubebuilder:object:root=true

@@ -21,10 +21,17 @@ import (
 	"math"
 	"reflect"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
@@ -79,10 +86,42 @@ func (r *NodeDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl
 	return ctrl.Result{}, err
 }
 
+// MapFuncBuilder returns a MapFunc that is used to dispatch reconcile requests to
+// budgets when an event is triggered by one of their matching object
+func (r *NodeDisruptionBudgetReconciler) MapFuncBuilder() handler.MapFunc {
+	// Look for all ADBs in the namespace, then see if they match the object
+	return func(ctx context.Context, object client.Object) (requests []reconcile.Request) {
+		ndbs := nodedisruptionv1alpha1.NodeDisruptionBudgetList{}
+		err := r.Client.List(ctx, &ndbs, &client.ListOptions{Namespace: object.GetNamespace()})
+		if err != nil {
+			// We cannot return an error so at least it should be logged
+			logger := log.FromContext(context.Background())
+			logger.Error(err, "Could not list NDBs in watch function")
+			return requests
+		}
+
+		for _, ndb := range ndbs.Items {
+			if ndb.SelectorMatchesObject(object) {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Name:      ndb.Name,
+						Namespace: ndb.Namespace,
+					},
+				})
+			}
+		}
+		return requests
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *NodeDisruptionBudgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nodedisruptionv1alpha1.NodeDisruptionBudget{}).
+		Watches(
+			&corev1.Node{},
+			handler.EnqueueRequestsFromMapFunc(r.MapFuncBuilder()),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
 		Complete(r)
 }
 
