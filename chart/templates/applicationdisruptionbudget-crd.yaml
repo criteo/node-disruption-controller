@@ -49,12 +49,6 @@ spec:
             description: ApplicationDisruptionBudgetSpec defines the desired state of
               ApplicationDisruptionBudget
             properties:
-              healthURL:
-                description: Health URL is deprecated and will be removed in next version,
-                  please use healthHook instead. Health URL is an optional URL to
-                  call to validate the state of the application. Maintenance will proceed
-                  only if the endpoint responds 2XX.
-                type: string
               healthHook:
                 description: Define a optional hook to call when validating a NodeDisruption.
                   It perform a POST http request containing the NodeDisruption that
@@ -71,6 +65,12 @@ spec:
                       form (`scheme://host:port/path`).
                     type: string
                 type: object
+              healthURL:
+                description: Health URL is deprecated and will be removed in next version,
+                  please use healthHook instead. Health URL is an optional URL to call
+                  to validate the state of the application. Maintenance will proceed
+                  only if the endpoint responds 2XX.
+                type: string
               maxDisruptions:
                 description: A NodeDisruption is allowed if at most "maxDisruptions"
                   nodes selected by selectors are unavailable after the disruption.
@@ -175,6 +175,23 @@ spec:
                 default: 0
                 description: Number of disruption currently seen on the cluster
                 type: integer
+              disruptions:
+                description: Disruptions contains a list of disruptions that are related
+                  to the budget
+                items:
+                  description: Basic information about disruptions
+                  properties:
+                    name:
+                      description: Name of the disruption
+                      type: string
+                    state:
+                      description: State of the disruption
+                      type: string
+                  required:
+                  - name
+                  - state
+                  type: object
+                type: array
               disruptionsAllowed:
                 default: 0
                 description: Number of disruption allowed on the nodes of this
@@ -188,6 +205,7 @@ spec:
                 type: array
             required:
             - currentDisruptions
+            - disruptions
             - disruptionsAllowed
             type: object
         type: object

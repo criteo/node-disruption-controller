@@ -74,6 +74,17 @@ type DisruptionBudgetStatus struct {
 	// Number of disruption currently seen on the cluster
 	// +kubebuilder:default=0
 	CurrentDisruptions int `json:"currentDisruptions"`
+
+	// Disruptions contains a list of disruptions that are related to the budget
+	Disruptions []Disruption `json:"disruptions"`
+}
+
+// Basic information about disruptions
+type Disruption struct {
+	// Name of the disruption
+	Name string `json:"name"`
+	// State of the disruption
+	State string `json:"state"`
 }
 
 //+kubebuilder:object:root=true

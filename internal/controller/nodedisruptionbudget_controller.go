@@ -122,6 +122,10 @@ func (r *NodeDisruptionBudgetReconciler) SetupWithManager(mgr ctrl.Manager) erro
 			&corev1.Node{},
 			handler.EnqueueRequestsFromMapFunc(r.MapFuncBuilder()),
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
+		Watches(
+			&nodedisruptionv1alpha1.NodeDisruption{},
+			handler.EnqueueRequestsFromMapFunc(r.MapFuncBuilder()),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
 		Complete(r)
 }
 
@@ -140,7 +144,7 @@ func (r *NodeDisruptionBudgetResolver) Sync(ctx context.Context) error {
 
 	nodes := resolver.NodeSetToStringList(nodeNames)
 
-	disruptionCount, err := r.ResolveDisruption(ctx)
+	disruptionCount, disruptions, err := r.ResolveDisruption(ctx)
 	if err != nil {
 		return err
 	}
@@ -150,7 +154,7 @@ func (r *NodeDisruptionBudgetResolver) Sync(ctx context.Context) error {
 	disruptionsForMax := r.NodeDisruptionBudget.Spec.MaxDisruptedNodes - disruptionCount
 	disruptionsForMin := (len(nodes) - disruptionCount) - r.NodeDisruptionBudget.Spec.MinUndisruptedNodes
 	r.NodeDisruptionBudget.Status.DisruptionsAllowed = int(math.Min(float64(disruptionsForMax), float64(disruptionsForMin))) - disruptionCount
-
+	r.NodeDisruptionBudget.Status.Disruptions = disruptions
 	return nil
 }
 
@@ -198,34 +202,38 @@ func (r *NodeDisruptionBudgetResolver) GetSelectedNodes(ctx context.Context) (re
 	return nodesFromPods, nil
 }
 
-func (r *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (int, error) {
+func (r *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (int, []nodedisruptionv1alpha1.Disruption, error) {
+	disruptions := []nodedisruptionv1alpha1.Disruption{}
 	selectedNodes, err := r.GetSelectedNodes(ctx)
 	if err != nil {
-		return 0, err
+		return 0, disruptions, err
 	}
 
-	disruptions := 0
+	disruptionCount := 0
 
 	opts := []client.ListOption{}
 	nodeDisruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
 
 	err = r.Client.List(ctx, nodeDisruptions, opts...)
 	if err != nil {
-		return 0, err
+		return 0, disruptions, err
 	}
 
 	for _, nd := range nodeDisruptions.Items {
-		if nd.Status.State != nodedisruptionv1alpha1.Granted {
-			continue
-		}
-
 		impactedNodes, err := r.Resolver.GetNodeFromNodeSelector(ctx, nd.Spec.NodeSelector)
 		if err != nil {
-			return 0, err
+			return 0, disruptions, err
 		}
+
 		if selectedNodes.Intersection(impactedNodes).Len() > 0 {
-			disruptions++
+			if nd.Status.State == nodedisruptionv1alpha1.Granted {
+				disruptionCount++
+			}
+			disruptions = append(disruptions, nodedisruptionv1alpha1.Disruption{
+				Name:  nd.Name,
+				State: string(nd.Status.State),
+			})
 		}
 	}
-	return disruptions, nil
+	return disruptionCount, disruptions, err
 }

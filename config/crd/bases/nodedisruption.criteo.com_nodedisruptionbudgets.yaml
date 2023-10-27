@@ -115,6 +115,23 @@ spec:
                 default: 0
                 description: Number of disruption currently seen on the cluster
                 type: integer
+              disruptions:
+                description: Disruptions contains a list of disruptions that are related
+                  to the budget
+                items:
+                  description: Basic information about disruptions
+                  properties:
+                    name:
+                      description: Name of the disruption
+                      type: string
+                    state:
+                      description: State of the disruption
+                      type: string
+                  required:
+                  - name
+                  - state
+                  type: object
+                type: array
               disruptionsAllowed:
                 default: 0
                 description: Number of disruption allowed on the nodes of this
@@ -128,6 +145,7 @@ spec:
                 type: array
             required:
             - currentDisruptions
+            - disruptions
             - disruptionsAllowed
             type: object
         type: object

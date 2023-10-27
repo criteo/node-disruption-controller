@@ -64,7 +64,7 @@ var _ = Describe("NodeDisruptionBudget controller", func() {
 				clearAllNodeDisruptionRessources()
 			})
 
-			When("there are no budgets in the cluster", func() {
+			When("Nodes changes in the cluster", func() {
 				It("it updates the NDB", func() {
 					By("creating a budget that accepts one disruption")
 					ndb := &nodedisruptionv1alpha1.NodeDisruptionBudget{
@@ -121,6 +121,63 @@ var _ = Describe("NodeDisruptionBudget controller", func() {
 						Expect(err).Should(Succeed())
 						return createdNDB.Status.WatchedNodes
 					}, timeout, interval).Should(Equal([]string{"node1", "node2"}))
+				})
+			})
+
+			When("ND are created", func() {
+				It("it updates the NDB", func() {
+					By("creating a budget that accepts one disruption")
+					ndb := &nodedisruptionv1alpha1.NodeDisruptionBudget{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruptionBudget",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      NDBname,
+							Namespace: NDBNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionBudgetSpec{
+							NodeSelector:      metav1.LabelSelector{MatchLabels: nodeLabels1},
+							MaxDisruptedNodes: 10,
+						},
+					}
+					Expect(k8sClient.Create(ctx, ndb)).Should(Succeed())
+
+					By("checking the NodeDisruptionBudget in synchronized")
+					NDBLookupKey := types.NamespacedName{Name: NDBname, Namespace: NDBNamespace}
+					createdNDB := &nodedisruptionv1alpha1.NodeDisruptionBudget{}
+					Eventually(func() []string {
+						err := k8sClient.Get(ctx, NDBLookupKey, createdNDB)
+						Expect(err).Should(Succeed())
+						return createdNDB.Status.WatchedNodes
+					}, timeout, interval).Should(Equal([]string{"node1", "node2"}))
+
+					By("Adding Node Disruption")
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruption",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test-ndb-1",
+							Namespace: "",
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					By("checking the NodeDisruptionBudget updated the status")
+					Eventually(func() []nodedisruptionv1alpha1.Disruption {
+						err := k8sClient.Get(ctx, NDBLookupKey, createdNDB)
+						Expect(err).Should(Succeed())
+						return createdNDB.Status.Disruptions
+					}, timeout, interval).Should(Equal([]nodedisruptionv1alpha1.Disruption{{
+						Name:  "test-ndb-1",
+						State: "granted",
+					}}))
+
 				})
 			})
 
