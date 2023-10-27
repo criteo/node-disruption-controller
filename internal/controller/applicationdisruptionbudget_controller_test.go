@@ -100,8 +100,8 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 				clearAllNodeDisruptionRessources()
 			})
 
-			When("there are no budgets in the cluster", func() {
-				It("grants the node disruption", func() {
+			When("Pods or PVC changes", func() {
+				It("updates the budget status", func() {
 					By("creating a budget that accepts one disruption")
 					ndb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
 						TypeMeta: metav1.TypeMeta{
@@ -181,6 +181,64 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 						Expect(err).Should(Succeed())
 						return createdADB.Status.WatchedNodes
 					}, timeout, interval).Should(Equal([]string{"node1", "node2", "node3"}))
+				})
+			})
+
+			When("Node disruption is created", func() {
+				It("updates the budget status", func() {
+					By("creating a budget that accepts one disruption")
+					ndb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "ApplicationDisruptionBudget",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      ADBname,
+							Namespace: ADBNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+							PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+							PVCSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+							MaxDisruptions: 1,
+						},
+					}
+					Expect(k8sClient.Create(ctx, ndb)).Should(Succeed())
+
+					By("checking the ApplicationDisruptionBudget in synchronized")
+					ADBLookupKey := types.NamespacedName{Name: ADBname, Namespace: ADBNamespace}
+					createdADB := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
+					Eventually(func() []string {
+						err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
+						Expect(err).Should(Succeed())
+						return createdADB.Status.WatchedNodes
+					}, timeout, interval).Should(Equal([]string{"node1", "node2", "node3"}))
+
+					By("Adding Node Disruption")
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruption",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test-adb-1",
+							Namespace: "",
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					By("checking the ApplicationDisruptionBudget updated the status")
+					Eventually(func() []nodedisruptionv1alpha1.Disruption {
+						err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
+						Expect(err).Should(Succeed())
+						return createdADB.Status.Disruptions
+					}, timeout, interval).Should(Equal([]nodedisruptionv1alpha1.Disruption{{
+						Name:  "test-adb-1",
+						State: "granted",
+					}}))
+
 				})
 			})
 
