@@ -68,3 +68,7 @@ spec:
         runAsNonRoot: true
       serviceAccountName: {{ include "chart.fullname" . }}-controller-manager
       terminationGracePeriodSeconds: 10
+      {{- with .Values.controllerManager.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
