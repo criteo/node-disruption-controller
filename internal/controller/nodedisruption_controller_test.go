@@ -59,7 +59,7 @@ func clearAllNodeDisruptionRessources() {
 
 }
 
-func startReconcilerWithConfig(config NodeDisruptionReconcilerConfig) (cancelFn context.CancelFunc) {
+func startReconcilerWithConfig(config NodeDisruptionReconcilerConfig) context.CancelFunc {
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		MetricsBindAddress: "127.0.0.1:8081",
 		PprofBindAddress:   "127.0.0.1:8082",
@@ -83,14 +83,22 @@ func startReconcilerWithConfig(config NodeDisruptionReconcilerConfig) (cancelFn 
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	managerCtx, cancelFn := context.WithCancel(context.Background())
+	managerCtx, cancel := context.WithCancel(context.Background())
+
+	shutdownChan := make(chan bool, 1)
 
 	go func() {
 		defer GinkgoRecover()
 		err = k8sManager.Start(managerCtx)
 		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
+		shutdownChan <- true
 	}()
-	return cancelFn
+
+	return func() {
+		cancel()
+		// Ensure the manager is actually stopped to avoid starting a new manager too early
+		<-shutdownChan
+	}
 }
 
 func startDummyHTTPServer(handle http.HandlerFunc, listenAddr string) (cancelFn func()) {
