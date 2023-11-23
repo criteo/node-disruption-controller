@@ -53,6 +53,44 @@ func TestControllers(t *testing.T) {
 	RunSpecs(t, "Controller Suite")
 }
 
+func newPod(name, namespace, nodeName string, labels map[string]string) corev1.Pod {
+	return corev1.Pod{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels:    labels,
+		},
+		Spec: corev1.PodSpec{
+			NodeName: nodeName,
+			Containers: []corev1.Container{
+				{
+					Name:  "testcontainer",
+					Image: "ubuntu",
+				},
+			},
+		},
+		Status: corev1.PodStatus{}}
+}
+
+func newPVC(name, namespace, pvName string, labels map[string]string) corev1.PersistentVolumeClaim {
+	ressources := make(corev1.ResourceList, 1)
+	ressources[corev1.ResourceStorage] = *resource.NewQuantity(100, ressources.Storage().Format)
+	return corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels:    labels,
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			VolumeName:  pvName,
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources:   corev1.ResourceRequirements{Requests: ressources},
+		},
+		Status: corev1.PersistentVolumeClaimStatus{},
+	}
+}
+
 func newPVforNode(nodeName string) (pv corev1.PersistentVolume) {
 	ressources := make(corev1.ResourceList, 1)
 	ressources[corev1.ResourceStorage] = *resource.NewQuantity(100, ressources.Memory().Format)
