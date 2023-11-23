@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -67,10 +68,6 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, ns)).Should(Succeed())
-
-			By("Adding Pods")
-			pod1 := newPod("podadb1", ADBNamespace, "node1", podLabels)
-			Expect(k8sClient.Create(ctx, &pod1)).Should(Succeed())
 		})
 
 		AfterEach(func() {
@@ -90,6 +87,10 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 
 		When("Pods or PVC changes", func() {
 			It("updates the budget status", func() {
+				By("Adding Pod")
+				pod1 := newPod("podadb1", ADBNamespace, "node1", podLabels)
+				Expect(k8sClient.Create(ctx, &pod1)).Should(Succeed())
+
 				By("creating a budget that accepts one disruption")
 				ndb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
 					TypeMeta: metav1.TypeMeta{
@@ -144,6 +145,8 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 		When("Node disruption is created", func() {
 			It("updates the budget status", func() {
 				By("Adding pods and PVCs")
+				pod1 := newPod("podadb1", ADBNamespace, "node1", podLabels)
+				Expect(k8sClient.Create(ctx, &pod1)).Should(Succeed())
 				pod2 := newPod("podadb2", ADBNamespace, "node2", podLabels)
 				Expect(k8sClient.Create(ctx, &pod2)).Should(Succeed())
 				pvc3 := newPVC("pvc3", ADBNamespace, "node3-pv-local", podLabels)
@@ -205,6 +208,60 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 			})
 		})
 
+		When("PV doesn't have an affinity", func() {
+			It("is ignored by ADB", func() {
+				By("Creating PV without NodeAffinity")
+				ressources := make(corev1.ResourceList, 1)
+				ressources[corev1.ResourceStorage] = *resource.NewQuantity(100, ressources.Storage().Format)
+
+				PVWithoutAffinity := &corev1.PersistentVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "remote-pv",
+					},
+					Spec: corev1.PersistentVolumeSpec{
+						Capacity:               ressources,
+						AccessModes:            []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						PersistentVolumeSource: corev1.PersistentVolumeSource{CSI: &corev1.CSIPersistentVolumeSource{Driver: "test", VolumeHandle: "test"}},
+						NodeAffinity:           nil,
+					},
+				}
+				Expect(k8sClient.Create(ctx, PVWithoutAffinity)).Should(Succeed())
+
+				By("Adding PVC")
+				pvc := newPVC("pvc", ADBNamespace, "remote-pv", podLabels)
+				Expect(k8sClient.Create(ctx, &pvc)).Should(Succeed())
+
+				By("creating a budget that accepts one disruption")
+				adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "nodedisruption.criteo.com/v1alpha1",
+						Kind:       "ApplicationDisruptionBudget",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      ADBname,
+						Namespace: ADBNamespace,
+					},
+					Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+						PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+						PVCSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+						MaxDisruptions: 1,
+					},
+				}
+				Expect(k8sClient.Create(ctx, adb)).Should(Succeed())
+
+				By("checking the ApplicationDisruptionBudget updated the status and has seen no nodes")
+				Eventually(func() int {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Namespace: ADBNamespace,
+						Name:      ADBname,
+					}, adb)
+					Expect(err).Should(Succeed())
+					return adb.Status.DisruptionsAllowed
+				}, timeout, interval).Should(Equal(1))
+
+				Expect(adb.Status.WatchedNodes).Should(BeEmpty())
+			})
+		})
 	})
 
 })

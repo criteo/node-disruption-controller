@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -140,6 +141,8 @@ func NodeSelectorAsSelector(nodeSelector *corev1.NodeSelector) (labels.Selector,
 }
 
 func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSelector metav1.LabelSelector, namespace string) (NodeSet, error) {
+	logger := log.FromContext(ctx)
+
 	nodeNames := set.New()
 	nodeSet := NodeSet{Nodes: nodeNames}
 
@@ -172,10 +175,12 @@ func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSel
 			return nodeSet, err
 		}
 
-		nodeSelector := pv.Spec.NodeAffinity.Required
-		if nodeSelector == nil {
+		if pv.Spec.NodeAffinity == nil || pv.Spec.NodeAffinity.Required == nil {
+			logger.Info("Skipping PV because NodeAffinity or Required is not defined", "pv_name", pv.Name)
 			continue
 		}
+
+		nodeSelector := pv.Spec.NodeAffinity.Required
 
 		opts := []client.ListOption{}
 		labelSelector, fieldSelector, err := NodeSelectorAsSelector(nodeSelector)
@@ -185,7 +190,7 @@ func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSel
 
 		if labelSelector.Empty() && fieldSelector.Empty() {
 			// Ignore this PV
-			fmt.Printf("skipping %s, no affinity", PVName)
+			logger.Info("Skipping PV because there are no selector defined", "pv_name", pv.Name)
 			continue
 		}
 
