@@ -101,7 +101,7 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		logger.Info("Updating Status, done with", "state", nd.Status.State)
 		return clusterResult, reconciler.UpdateStatus(ctx)
 	}
-	logger.Info("Reconcilation successful", "state", nd.Status.State)
+	logger.Info("Reconciliation successful", "state", nd.Status.State)
 	return clusterResult, nil
 }
 

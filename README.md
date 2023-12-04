@@ -89,7 +89,7 @@ stateDiagram
 
 ##### Retry
 
-NodeDisruption can be retried automatically. The main purpose of retry is to allow prepation for a disruption. Some disruptions cannot be allowed until some preparations operations have been completed (e.g. replicating data out of the node). A controller can consumme the pending NodeDisruption, perform the required operations and finaly accept the disruption when it is safe.
+NodeDisruption can be retried automatically. The main purpose of retry is to allow preparation for a disruption. Some disruptions cannot be allowed until some preparations operations have been completed (e.g. replicating data out of the node). A controller can consume the pending NodeDisruption, perform the required operations and finally accept the disruption when it is safe.
 
 #### Sample object
 
@@ -265,7 +265,7 @@ TeamK can create a NodeDisruptionBudget to protect the number of concurrent Node
 of nodes.
 
 TeamK, before doing a maintenance of a node will create a NodeDisruption. The controller will check
-wich budgets are impacted by the disruption and check if they can tolerate one more disruption.
+which budgets are impacted by the disruption and check if they can tolerate one more disruption.
 If not, the NodeDisruption will be rejected. TeamK will have to retry creating a NodeDisruption
 later.
 If it is granted, TeamK can disrupt the node. In this case, the disruption will be the drain and
