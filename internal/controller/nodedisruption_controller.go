@@ -211,23 +211,27 @@ func (ndr *SingleNodeDisruptionReconciler) UpdateStatus(ctx context.Context) err
 	return ndr.Client.Status().Update(ctx, &ndr.NodeDisruption, []client.SubResourceUpdateOption{}...)
 }
 
+func (ndr *SingleNodeDisruptionReconciler) GenerateRejectedStatus(reason string) []nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	return []nodedisruptionv1alpha1.DisruptedBudgetStatus{
+		{
+			Reference: nodedisruptionv1alpha1.NamespacedName{
+				Namespace: ndr.NodeDisruption.Namespace,
+				Name:      ndr.NodeDisruption.Name,
+				Kind:      ndr.NodeDisruption.Kind,
+			},
+			Reason: reason,
+			Ok:     false,
+		},
+	}
+}
+
 // ValidateInternalConstraints check that the Node Disruption is valid against internal constraints
 // such as deadline or constraints on number of impacted nodes
 func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx context.Context) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
 	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
 
 	if ndr.Config.RejectEmptyNodeDisruption && disruptedNodes.Len() == 0 {
-		return true, []nodedisruptionv1alpha1.DisruptedBudgetStatus{
-			{
-				Reference: nodedisruptionv1alpha1.NamespacedName{
-					Namespace: ndr.NodeDisruption.Namespace,
-					Name:      ndr.NodeDisruption.Name,
-					Kind:      ndr.NodeDisruption.Kind,
-				},
-				Reason: "No Node matching selector",
-				Ok:     false,
-			},
-		}
+		return true, ndr.GenerateRejectedStatus("No Node matching selector")
 	}
 
 	allDisruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
@@ -239,33 +243,13 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 		if otherDisruption.Status.State == nodedisruptionv1alpha1.Pending || otherDisruption.Status.State == nodedisruptionv1alpha1.Granted {
 			otherDisruptedNodes := resolver.NewNodeSetFromStringList(otherDisruption.Status.DisruptedNodes)
 			if otherDisruptedNodes.Intersection(disruptedNodes).Len() > 0 {
-				return true, []nodedisruptionv1alpha1.DisruptedBudgetStatus{
-					{
-						Reference: nodedisruptionv1alpha1.NamespacedName{
-							Namespace: ndr.NodeDisruption.Namespace,
-							Name:      ndr.NodeDisruption.Name,
-							Kind:      ndr.NodeDisruption.Kind,
-						},
-						Reason: fmt.Sprintf(`Selected node(s) overlap with another disruption: ”%s"`, otherDisruption.Name),
-						Ok:     false,
-					},
-				}
+				return true, ndr.GenerateRejectedStatus(fmt.Sprintf(`Selected node(s) overlap with another disruption: ”%s"`, otherDisruption.Name))
 			}
 		}
 	}
 
 	if ndr.NodeDisruption.Spec.Retry.IsAfterDeadline() {
-		return true, []nodedisruptionv1alpha1.DisruptedBudgetStatus{
-			{
-				Reference: nodedisruptionv1alpha1.NamespacedName{
-					Namespace: ndr.NodeDisruption.Namespace,
-					Name:      ndr.NodeDisruption.Name,
-					Kind:      ndr.NodeDisruption.Kind,
-				},
-				Reason: "Deadline exceeded",
-				Ok:     false,
-			},
-		}
+		return true, ndr.GenerateRejectedStatus("Deadline exceeded")
 	}
 
 	return false, statuses
