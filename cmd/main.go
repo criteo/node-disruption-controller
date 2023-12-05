@@ -55,6 +55,7 @@ func main() {
 	var probeAddr string
 	var rejectEmptyNodeDisruption bool
 	var retryInterval time.Duration
+	var rejectOverlappingDisruption bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -62,6 +63,7 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&rejectEmptyNodeDisruption, "reject-empty-node-disruption", false, "Reject NodeDisruption matching no actual node.")
 	flag.DurationVar(&retryInterval, "retry-interval", controller.DefaultRetryInterval, "How long to wait between each retry (Default 60s)")
+	flag.BoolVar(&rejectOverlappingDisruption, "reject-overlapping-disruption", false, "Automatically reject any overlapping NodeDisruption (based on node selector), preserving the oldest one")
 
 	opts := zap.Options{
 		Development: true,
@@ -99,8 +101,9 @@ func main() {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 		Config: controller.NodeDisruptionReconcilerConfig{
-			RejectEmptyNodeDisruption: rejectEmptyNodeDisruption,
-			RetryInterval:             retryInterval,
+			RejectEmptyNodeDisruption:   rejectEmptyNodeDisruption,
+			RetryInterval:               retryInterval,
+			RejectOverlappingDisruption: rejectOverlappingDisruption,
 		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "NodeDisruption")
