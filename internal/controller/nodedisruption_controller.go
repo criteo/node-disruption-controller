@@ -237,19 +237,21 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 		return true, ndr.generateRejectedStatus("No Node matching selector"), nil
 	}
 
-	allDisruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
-	err = ndr.Client.List(ctx, allDisruptions)
-	if err != nil {
-		return false, nil, err
-	}
-	for _, otherDisruption := range allDisruptions.Items {
-		if otherDisruption.Name == ndr.NodeDisruption.Name {
-			continue
+	if ndr.Config.RejectOverlappingDisruption {
+		allDisruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
+		err = ndr.Client.List(ctx, allDisruptions)
+		if err != nil {
+			return false, nil, err
 		}
-		if otherDisruption.Status.State == nodedisruptionv1alpha1.Pending || otherDisruption.Status.State == nodedisruptionv1alpha1.Granted {
-			otherDisruptedNodes := resolver.NewNodeSetFromStringList(otherDisruption.Status.DisruptedNodes)
-			if otherDisruptedNodes.Intersection(disruptedNodes).Len() > 0 {
-				return true, ndr.generateRejectedStatus(fmt.Sprintf(`Selected node(s) overlap with another disruption: ”%s"`, otherDisruption.Name)), nil
+		for _, otherDisruption := range allDisruptions.Items {
+			if otherDisruption.Name == ndr.NodeDisruption.Name {
+				continue
+			}
+			if otherDisruption.Status.State == nodedisruptionv1alpha1.Pending || otherDisruption.Status.State == nodedisruptionv1alpha1.Granted {
+				otherDisruptedNodes := resolver.NewNodeSetFromStringList(otherDisruption.Status.DisruptedNodes)
+				if otherDisruptedNodes.Intersection(disruptedNodes).Len() > 0 {
+					return true, ndr.generateRejectedStatus(fmt.Sprintf(`Selected node(s) overlap with another disruption: ”%s"`, otherDisruption.Name)), nil
+				}
 			}
 		}
 	}
