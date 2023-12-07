@@ -214,7 +214,7 @@ func (ndr *SingleNodeDisruptionReconciler) UpdateStatus(ctx context.Context) err
 	return ndr.Client.Status().Update(ctx, &ndr.NodeDisruption, []client.SubResourceUpdateOption{}...)
 }
 
-func (ndr *SingleNodeDisruptionReconciler) GenerateRejectedStatus(reason string) []nodedisruptionv1alpha1.DisruptedBudgetStatus {
+func (ndr *SingleNodeDisruptionReconciler) generateRejectedStatus(reason string) []nodedisruptionv1alpha1.DisruptedBudgetStatus {
 	return []nodedisruptionv1alpha1.DisruptedBudgetStatus{
 		{
 			Reference: nodedisruptionv1alpha1.NamespacedName{
@@ -234,7 +234,7 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
 
 	if ndr.Config.RejectEmptyNodeDisruption && disruptedNodes.Len() == 0 {
-		return true, ndr.GenerateRejectedStatus("No Node matching selector"), nil
+		return true, ndr.generateRejectedStatus("No Node matching selector"), nil
 	}
 
 	allDisruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
@@ -249,13 +249,13 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 		if otherDisruption.Status.State == nodedisruptionv1alpha1.Pending || otherDisruption.Status.State == nodedisruptionv1alpha1.Granted {
 			otherDisruptedNodes := resolver.NewNodeSetFromStringList(otherDisruption.Status.DisruptedNodes)
 			if otherDisruptedNodes.Intersection(disruptedNodes).Len() > 0 {
-				return true, ndr.GenerateRejectedStatus(fmt.Sprintf(`Selected node(s) overlap with another disruption: ”%s"`, otherDisruption.Name)), nil
+				return true, ndr.generateRejectedStatus(fmt.Sprintf(`Selected node(s) overlap with another disruption: ”%s"`, otherDisruption.Name)), nil
 			}
 		}
 	}
 
 	if ndr.NodeDisruption.Spec.Retry.IsAfterDeadline() {
-		return true, ndr.GenerateRejectedStatus("Deadline exceeded"), nil
+		return true, ndr.generateRejectedStatus("Deadline exceeded"), nil
 	}
 
 	return false, statuses, nil
