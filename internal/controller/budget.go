@@ -15,7 +15,7 @@ type Budget interface {
 	IsImpacted(resolver.NodeSet) bool
 	// Return the number of disruption allowed considering a list of current node disruptions
 	TolerateDisruption(resolver.NodeSet) bool
-	// Check health make a synchronous health check on the underlying ressource of a budget
+	// Check health make a synchronous health check on the underlying resource of a budget
 	CheckHealth(context.Context) error
 	// Call a lifecycle hook in order to synchronously validate a Node Disruption
 	CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption) error

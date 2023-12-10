@@ -38,7 +38,7 @@ import (
 
 // +kubebuilder:docs-gen:collapse=Imports
 
-func clearAllNodeDisruptionRessources() {
+func clearAllNodeDisruptionresources() {
 	// It doesn't seem possible to wipe in all namespace so we walk through all of them
 	namespaces := &corev1.NamespaceList{}
 	err := k8sClient.List(context.Background(), namespaces)
@@ -192,7 +192,7 @@ var _ = Describe("NodeDisruption controller", func() {
 			})
 
 			AfterEach(func() {
-				clearAllNodeDisruptionRessources()
+				clearAllNodeDisruptionresources()
 			})
 
 			When("there are no budgets in the cluster", func() {
@@ -495,7 +495,7 @@ var _ = Describe("NodeDisruption controller", func() {
 				Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
 			})
 			AfterEach(func() {
-				clearAllNodeDisruptionRessources()
+				clearAllNodeDisruptionresources()
 				cancelFn()
 			})
 

@@ -70,7 +70,7 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// If the ressource was not found, nothing has to be done
+			// If the resource was not found, nothing has to be done
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -194,7 +194,7 @@ func (r *ApplicationDisruptionBudgetResolver) GetNamespacedName() nodedisruption
 	}
 }
 
-// Check health make a synchronous health check on the underlying ressource of a budget
+// Check health make a synchronous health check on the underlying resource of a budget
 func (r *ApplicationDisruptionBudgetResolver) CheckHealth(context.Context) error {
 	if r.ApplicationDisruptionBudget.Spec.HealthURL == nil {
 		return nil
