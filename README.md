@@ -1,11 +1,11 @@
 # Node Disruption Controller
 
-Node-disruption-controller (NDB) is a way to control node disruptions (e.g. for maintenance purpose) in a Kubernetes cluster.
+Node-disruption-controller (NDC) is a way to control node disruptions (e.g. for maintenance purpose) in a Kubernetes cluster.
 
 
 ## Motivation
 
-The Node Disruption Controller was built to help perform maintenance operations on Kubernetes clusters running stateful workloads, especially those reliant on local storage like databases. Nodes within a Kubernetes cluster are subject to disruptions: involuntary (like hardware failures, VM premption, or crashes) and voluntary (such as node maintenance). Performing efficient yet safe maintenances when it involves multiple actors (different teams, different controllers) is challenging. The Node Disruption Controller provides an interface between the actors that want to perform maintenances on nodes (maintenance systems, autoscalers) and the ones that are operating services on top of these nodes.
+The Node Disruption Controller was built to help perform maintenance operations on Kubernetes clusters running stateful workloads, especially those reliant on local storage like databases. Nodes within a Kubernetes cluster are subject to disruptions: involuntary (like hardware failures, VM preemption, or crashes) and voluntary (such as node maintenance). Performing efficient yet safe maintenances when it involves multiple actors (different teams, different controllers) is challenging. The Node Disruption Controller provides an interface between the actors that want to perform maintenances on nodes (maintenance systems, autoscalers) and the ones that are operating services on top of these nodes.
 
 While workload operators should build systems that are resilient to involuntary disruptions, the controller helps ensure that voluntary disruptions are as safe as they can be.
 
@@ -17,21 +17,21 @@ Storage is represented by Persistent Volume (PV) and PV Claims (PVC). While remo
 
 When relying on drain and PDB, data is safeguarded from eviction only if a Pod is actively running on it. Nevertheless, certain scenarios exist where Pods are not running on the node with the data, and losing a node would be costly:
 
-- Critical rolling update: During a rolling update, Pods are restarted. If a Pod running on a node that is cordoned, preventing it from restarting on the node, the node can be drained successfully even if the    PDB permits no disruptions. While the database should ideally withstand the loss of data from a single node, allowing it during a major version upgrade can be risky (Database might not allow node replacement in the middle of an upgrade).
+- Critical rolling update: During a rolling update, Pods are restarted. If a Pod running on a node that is cordoned, preventing it from restarting on the node, the node can be drained successfully even if the PDB permits no disruptions. While the database should ideally withstand the loss of data from a single node, allowing it during a major version upgrade can be risky (database might not allow node replacement in the middle of an upgrade).
 - Forced eviction on multiple pods: In real-world production environments, we've observed cases where node pressure leads to the eviction of multiple Pods within a StatefulSet. In such instances, node drains proceed without issue on nodes that forcefully evicted their pods. PDB is rendered useless. If multiple nodes enter maintenance mode simultaneously, data loss can occur.
 
-The Node Disruption Controller addresses these concerns by providing that is data (PVC/PV) aware.
+The Node Disruption Controller addresses these concerns by providing a primitive which is data (PVC/PV) aware.
 
 
 ### Service level healthcheck
 
 Kubernetes primitives and PDB only provide pod-level healthiness protection through mechanisms like liveness and readiness probes. However stateful workloads often provide service level healthiness (data redundancy status, SLA monitoring). In cases where the service is not in a healthy state, we must avoid initiating voluntary disruptions.
 
-Unfortunately, at the moment Kubernetes doesn't provide such API. Prior to the Node Disruption Controller (NDB), we addressed this need through periodic checks, where we set `maxUnavailable=0` if the service is unhealthy. However, asynchronous health checking is dangerous as it hard to check when the last health check was made (the periodic system could be broken and the state not updated for a long time) or it cannot be fast enough and lead to multiple evictions being granted before reacting. NDB prevents these issues by providing a synchronous health checking API.
+Unfortunately, at the moment Kubernetes doesn't provide such API. Prior to the Node Disruption Controller (NDC), we addressed this need through periodic checks, where we set `maxUnavailable=0` if the service is unhealthy. However, asynchronous health checking is dangerous as it hard to check when the last health check was made (the periodic system could be broken and the state not updated for a long time) or it cannot be fast enough and lead to multiple evictions being granted before reacting. NDC prevents these issues by providing a synchronous health checking API.
 
 ## Description
 
-The primary purpose of the Node Disruption Controller (NDB) is to provide a set of APIs to ensure safety of voluntary node-level disruptions, such as maintenances. Typically, maintenance involves the eviction of pods from a node and potentially rendering the node temporarily or permanently unavailable.
+The primary purpose of the Node Disruption Controller (NDC) is to provide a set of APIs to ensure safety of voluntary node-level disruptions, such as maintenances. Typically, maintenance involves the eviction of pods from a node and potentially rendering the node temporarily or permanently unavailable.
 
 The system is build around a contract: before any actions are taken on a node, a node disruption must be granted for that specific node. Once a node disruption has been granted, the requester can do what it wants (e.g., drain the node).
 
@@ -47,7 +47,7 @@ different from the PDB on the following point:
 - Can perform a synchronous service level health check. PDB is only looking at the readiness probes of individual pods
 - A pod can have more than one budget
 
-Finally, NDB's goal is to make the implementation by the workload owners simple. Owners don't have to implement all
+Finally, NDC's goal is to make the implementation by the workload owners simple. Owners don't have to implement all
 the features attain a level of safety they are satisfied with:
 - Stateless workload owners don't have to use Node Disruption Budget as they can use PodDisruptionBudgets (PDB)
 - Stateful owner can only provide a budget without service health-checking
@@ -274,8 +274,7 @@ reboot of the Node in question.
 ### Node autoscaling system
 
 The same features can apply to a Node autoscaling system that needs safely scale down a Kubernetes cluster.
-Let's say the system wants to remove 10 nodes from a Kubernetes cluster. It can select nodes randomly, try to create a NodeDisruption, if it is granted, the node can be drained and removed. If it's rejected, the system
-can try another node or try later. The budgets ensure that all the drains and node removals are safe.
+Let's say the system wants to remove 10 nodes from a Kubernetes cluster. It can select nodes randomly, try to create a NodeDisruption, if it is granted, the node can be drained and removed. If it's rejected, the system can try another node or try later. The budgets ensure that all the drains and node removals are safe.
 
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
