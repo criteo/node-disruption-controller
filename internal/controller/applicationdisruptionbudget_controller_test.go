@@ -71,7 +71,7 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 		})
 
 		AfterEach(func() {
-			clearAllNodeDisruptionresources()
+			clearAllNodeDisruptionResources()
 		})
 
 		BeforeAll(func() {
