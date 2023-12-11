@@ -42,6 +42,8 @@ type NodeDisruptionReconcilerConfig struct {
 	RejectEmptyNodeDisruption bool
 	// How long to retry between each validation attempt
 	RetryInterval time.Duration
+	// Reject NodeDisruption if its node selector overlaps an older NodeDisruption's selector
+	RejectOverlappingDisruption bool
 }
 
 // NodeDisruptionReconciler reconciles NodeDisruptions
@@ -172,7 +174,11 @@ func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Co
 		return err
 	}
 
-	anyFailed, statuses := ndr.ValidateWithInternalConstraints(ctx)
+	anyFailed, statuses, err := ndr.ValidateWithInternalConstraints(ctx)
+	if err != nil {
+		return err
+	}
+
 	if !anyFailed {
 		anyFailed, statuses = ndr.ValidateWithBudgetConstraints(ctx, budgets)
 	}
@@ -209,40 +215,65 @@ func (ndr *SingleNodeDisruptionReconciler) UpdateStatus(ctx context.Context) err
 	return ndr.Client.Status().Update(ctx, &ndr.NodeDisruption, []client.SubResourceUpdateOption{}...)
 }
 
+func (ndr *SingleNodeDisruptionReconciler) generateRejectedStatus(reason string) []nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	return []nodedisruptionv1alpha1.DisruptedBudgetStatus{
+		{
+			Reference: nodedisruptionv1alpha1.NamespacedName{
+				Namespace: ndr.NodeDisruption.Namespace,
+				Name:      ndr.NodeDisruption.Name,
+				Kind:      ndr.NodeDisruption.Kind,
+			},
+			Reason: reason,
+			Ok:     false,
+		},
+	}
+}
+
+// ValidateOverlappingDisruption checks that the current disruption doesn't overlap and existing one
+func (ndr *SingleNodeDisruptionReconciler) ValidateOverlappingDisruption(ctx context.Context, disruptedNodes resolver.NodeSet) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus, err error) {
+	allDisruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
+	err = ndr.Client.List(ctx, allDisruptions)
+	if err != nil {
+		return false, nil, err
+	}
+	for _, otherDisruption := range allDisruptions.Items {
+		if otherDisruption.Name == ndr.NodeDisruption.Name {
+			continue
+		}
+		if otherDisruption.Status.State == nodedisruptionv1alpha1.Pending || otherDisruption.Status.State == nodedisruptionv1alpha1.Granted {
+			otherDisruptedNodes := resolver.NewNodeSetFromStringList(otherDisruption.Status.DisruptedNodes)
+			if otherDisruptedNodes.Intersection(disruptedNodes).Len() > 0 {
+				return true, ndr.generateRejectedStatus(fmt.Sprintf(`Selected node(s) overlap with another disruption: ”%s"`, otherDisruption.Name)), nil
+			}
+		}
+	}
+
+	return false, nil, nil
+}
+
 // ValidateInternalConstraints check that the Node Disruption is valid against internal constraints
 // such as deadline or constraints on number of impacted nodes
-func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(_ context.Context) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
+func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx context.Context) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus, err error) {
 	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
 
 	if ndr.Config.RejectEmptyNodeDisruption && disruptedNodes.Len() == 0 {
-		return true, []nodedisruptionv1alpha1.DisruptedBudgetStatus{
-			{
-				Reference: nodedisruptionv1alpha1.NamespacedName{
-					Namespace: ndr.NodeDisruption.Namespace,
-					Name:      ndr.NodeDisruption.Name,
-					Kind:      ndr.NodeDisruption.Kind,
-				},
-				Reason: "No Node matching selector",
-				Ok:     false,
-			},
+		return true, ndr.generateRejectedStatus("No Node matching selector"), nil
+	}
+
+	if ndr.Config.RejectOverlappingDisruption {
+		anyFailed, statuses, err = ndr.ValidateOverlappingDisruption(ctx, disruptedNodes)
+		if err != nil {
+			return false, nil, err
+		} else if anyFailed {
+			return true, statuses, nil
 		}
 	}
 
 	if ndr.NodeDisruption.Spec.Retry.IsAfterDeadline() {
-		return true, []nodedisruptionv1alpha1.DisruptedBudgetStatus{
-			{
-				Reference: nodedisruptionv1alpha1.NamespacedName{
-					Namespace: ndr.NodeDisruption.Namespace,
-					Name:      ndr.NodeDisruption.Name,
-					Kind:      ndr.NodeDisruption.Kind,
-				},
-				Reason: "Deadline exceeded",
-				Ok:     false,
-			},
-		}
+		return true, ndr.generateRejectedStatus("Deadline exceeded"), nil
 	}
 
-	return false, statuses
+	return false, statuses, nil
 }
 
 // ValidateBudgetConstraints check that the Node Disruption is valid against the budgets defined in the cluster
