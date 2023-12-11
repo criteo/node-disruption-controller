@@ -510,7 +510,121 @@ var _ = Describe("NodeDisruption controller", func() {
 					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Rejected))
 				})
 			})
+		})
 
+		Describe("Reject overlapping disruptions feature", Label("toto"), Ordered, func() {
+			var (
+				node2Label        = map[string]string{"kubernetes.io/hostname": "node2"}
+				createdDisruption = &nodedisruptionv1alpha1.NodeDisruption{}
+			)
+
+			BeforeEach(func() {
+				By("configuring a first disruption")
+				disruption := &nodedisruptionv1alpha1.NodeDisruption{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "nodedisruption.criteo.com/v1alpha1",
+						Kind:       "NodeDisruption",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "disruption-test1",
+						Namespace: NDNamespace,
+					},
+					Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+						NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+					},
+				}
+				Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+			})
+			AfterEach(func() {
+				clearAllNodeDisruptionRessources()
+				cancelFn()
+			})
+
+			Context("RejectOverlappingDisruption is enabled", func() {
+				When("the created disruption overlaps an existing, granted one", func() {
+					BeforeEach(func() {
+						By("setting the first disruption in granted state")
+						disruption := &nodedisruptionv1alpha1.NodeDisruption{}
+						Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "disruption-test1", Namespace: NDNamespace}, disruption)).Should(Succeed())
+						disruption.Status.State = nodedisruptionv1alpha1.Granted
+						Expect(k8sClient.Status().Update(ctx, disruption)).Should(Succeed())
+
+						By("starting a reconciler with RejectOverlappingDisruption enabled")
+						cancelFn = startReconcilerWithConfig(NodeDisruptionReconcilerConfig{
+							RejectOverlappingDisruption: true,
+							RetryInterval:               time.Second * 1,
+						})
+
+						By("creating an overlapping disruption")
+						overlappingDisruption := &nodedisruptionv1alpha1.NodeDisruption{
+							TypeMeta: metav1.TypeMeta{
+								APIVersion: "nodedisruption.criteo.com/v1alpha1",
+								Kind:       "NodeDisruption",
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "disruption-node2",
+								Namespace: NDNamespace,
+							},
+							Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+								NodeSelector: metav1.LabelSelector{MatchLabels: node2Label},
+							},
+						}
+						Expect(k8sClient.Create(ctx, overlappingDisruption.DeepCopy())).Should(Succeed())
+					})
+					It("rejects the NodeDisruption", func() {
+						Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+							err := k8sClient.Get(ctx, types.NamespacedName{Name: "disruption-node2", Namespace: NDNamespace}, createdDisruption)
+							if err != nil {
+								panic("should be able to get")
+							}
+							return createdDisruption.Status.State
+						}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Rejected))
+					})
+				})
+			})
+
+			Context("RejectOverlappingDisruption is disabled", func() {
+				When("the created disruption overlaps an existing, granted one", func() {
+					BeforeEach(func() {
+						By("setting the first disruption in granted state")
+						disruption := &nodedisruptionv1alpha1.NodeDisruption{}
+						Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "disruption-test1", Namespace: NDNamespace}, disruption)).Should(Succeed())
+						disruption.Status.State = nodedisruptionv1alpha1.Granted
+						Expect(k8sClient.Status().Update(ctx, disruption)).Should(Succeed())
+
+						By("starting a reconciler with RejectOverlappingDisruption enabled")
+						cancelFn = startReconcilerWithConfig(NodeDisruptionReconcilerConfig{
+							RejectOverlappingDisruption: false,
+							RetryInterval:               time.Second * 1,
+						})
+
+						By("creating an overlapping disruption")
+						overlappingDisruption := &nodedisruptionv1alpha1.NodeDisruption{
+							TypeMeta: metav1.TypeMeta{
+								APIVersion: "nodedisruption.criteo.com/v1alpha1",
+								Kind:       "NodeDisruption",
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "disruption-node2",
+								Namespace: NDNamespace,
+							},
+							Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+								NodeSelector: metav1.LabelSelector{MatchLabels: node2Label},
+							},
+						}
+						Expect(k8sClient.Create(ctx, overlappingDisruption.DeepCopy())).Should(Succeed())
+					})
+					It("accepts the NodeDisruption", func() {
+						Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+							err := k8sClient.Get(ctx, types.NamespacedName{Name: "disruption-node2", Namespace: NDNamespace}, createdDisruption)
+							if err != nil {
+								panic("should be able to get")
+							}
+							return createdDisruption.Status.State
+						}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Granted))
+					})
+				})
+			})
 		})
 	})
 })
