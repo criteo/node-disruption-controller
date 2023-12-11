@@ -179,13 +179,6 @@ func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Co
 		return err
 	}
 
-	if !anyFailed && ndr.Config.RejectOverlappingDisruption {
-		anyFailed, statuses, err = ndr.ValidateOverlappingDisruption(ctx)
-		if err != nil {
-			return err
-		}
-	}
-
 	if !anyFailed {
 		anyFailed, statuses = ndr.ValidateWithBudgetConstraints(ctx, budgets)
 	}
@@ -236,26 +229,8 @@ func (ndr *SingleNodeDisruptionReconciler) generateRejectedStatus(reason string)
 	}
 }
 
-// ValidateInternalConstraints check that the Node Disruption is valid against internal constraints
-// such as deadline or constraints on number of impacted nodes
-func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx context.Context) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus, err error) {
-	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
-
-	if ndr.Config.RejectEmptyNodeDisruption && disruptedNodes.Len() == 0 {
-		return true, ndr.generateRejectedStatus("No Node matching selector"), nil
-	}
-
-	if ndr.NodeDisruption.Spec.Retry.IsAfterDeadline() {
-		return true, ndr.generateRejectedStatus("Deadline exceeded"), nil
-	}
-
-	return false, statuses, nil
-}
-
 // ValidateOverlappingDisruption checks that the current disruption doesn't overlap and existing one
-func (ndr *SingleNodeDisruptionReconciler) ValidateOverlappingDisruption(ctx context.Context) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus, err error) {
-	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
-
+func (ndr *SingleNodeDisruptionReconciler) ValidateOverlappingDisruption(ctx context.Context, disruptedNodes resolver.NodeSet) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus, err error) {
 	allDisruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
 	err = ndr.Client.List(ctx, allDisruptions)
 	if err != nil {
@@ -274,6 +249,31 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateOverlappingDisruption(ctx con
 	}
 
 	return false, nil, nil
+}
+
+// ValidateInternalConstraints check that the Node Disruption is valid against internal constraints
+// such as deadline or constraints on number of impacted nodes
+func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx context.Context) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus, err error) {
+	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
+
+	if ndr.Config.RejectEmptyNodeDisruption && disruptedNodes.Len() == 0 {
+		return true, ndr.generateRejectedStatus("No Node matching selector"), nil
+	}
+
+	if ndr.Config.RejectOverlappingDisruption {
+		anyFailed, statuses, err = ndr.ValidateOverlappingDisruption(ctx, disruptedNodes)
+		if err != nil {
+			return false, nil, err
+		} else if anyFailed {
+			return true, statuses, nil
+		}
+	}
+
+	if ndr.NodeDisruption.Spec.Retry.IsAfterDeadline() {
+		return true, ndr.generateRejectedStatus("Deadline exceeded"), nil
+	}
+
+	return false, statuses, nil
 }
 
 // ValidateBudgetConstraints check that the Node Disruption is valid against the budgets defined in the cluster
