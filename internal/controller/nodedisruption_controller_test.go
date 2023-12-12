@@ -248,6 +248,8 @@ var _ = Describe("NodeDisruption controller", func() {
 						Expect(err).Should(Succeed())
 						hookURL = req.URL.String()
 						hookCallCount++
+						// Validate that the hook is called with valid headers
+						Expect(req.Header["Content-Type"][0]).Should(Equal("application/json"))
 						w.WriteHeader(http.StatusOK)
 					}
 
