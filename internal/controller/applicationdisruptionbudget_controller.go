@@ -222,6 +222,7 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 	}
 
 	client := &http.Client{}
+	headers := make(map[string][]string, 1)
 
 	data, err := json.Marshal(nd)
 	if err != nil {
@@ -232,6 +233,10 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 	if err != nil {
 		return err
 	}
+
+	headers["Content-Type"] = []string{"application/json"}
+
+	req.Header = headers
 
 	resp, err := client.Do(req)
 	if err != nil {
