@@ -62,7 +62,7 @@ func (r *NodeDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl
 
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// If the ressource was not found, nothing has to be done
+			// If the resource was not found, nothing has to be done
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err

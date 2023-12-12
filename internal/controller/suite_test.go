@@ -74,8 +74,8 @@ func newPod(name, namespace, nodeName string, labels map[string]string) corev1.P
 }
 
 func newPVC(name, namespace, pvName string, labels map[string]string) corev1.PersistentVolumeClaim {
-	ressources := make(corev1.ResourceList, 1)
-	ressources[corev1.ResourceStorage] = *resource.NewQuantity(100, ressources.Storage().Format)
+	resources := make(corev1.ResourceList, 1)
+	resources[corev1.ResourceStorage] = *resource.NewQuantity(100, resources.Storage().Format)
 	return corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -85,21 +85,21 @@ func newPVC(name, namespace, pvName string, labels map[string]string) corev1.Per
 		Spec: corev1.PersistentVolumeClaimSpec{
 			VolumeName:  pvName,
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-			Resources:   corev1.ResourceRequirements{Requests: ressources},
+			Resources:   corev1.ResourceRequirements{Requests: resources},
 		},
 		Status: corev1.PersistentVolumeClaimStatus{},
 	}
 }
 
 func newPVforNode(nodeName string) (pv corev1.PersistentVolume) {
-	ressources := make(corev1.ResourceList, 1)
-	ressources[corev1.ResourceStorage] = *resource.NewQuantity(100, ressources.Memory().Format)
+	resources := make(corev1.ResourceList, 1)
+	resources[corev1.ResourceStorage] = *resource.NewQuantity(100, resources.Memory().Format)
 	return corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: fmt.Sprintf("%s-pv-local", nodeName),
 		},
 		Spec: corev1.PersistentVolumeSpec{
-			Capacity:               ressources,
+			Capacity:               resources,
 			AccessModes:            []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			PersistentVolumeSource: corev1.PersistentVolumeSource{Local: &corev1.LocalVolumeSource{Path: "path/to/nothing"}},
 			NodeAffinity: &corev1.VolumeNodeAffinity{Required: &corev1.NodeSelector{

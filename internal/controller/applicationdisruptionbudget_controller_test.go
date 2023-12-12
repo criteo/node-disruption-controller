@@ -71,7 +71,7 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 		})
 
 		AfterEach(func() {
-			clearAllNodeDisruptionRessources()
+			clearAllNodeDisruptionResources()
 		})
 
 		BeforeAll(func() {
@@ -211,15 +211,15 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 		When("PV doesn't have an affinity", func() {
 			It("is ignored by ADB", func() {
 				By("Creating PV without NodeAffinity")
-				ressources := make(corev1.ResourceList, 1)
-				ressources[corev1.ResourceStorage] = *resource.NewQuantity(100, ressources.Storage().Format)
+				resources := make(corev1.ResourceList, 1)
+				resources[corev1.ResourceStorage] = *resource.NewQuantity(100, resources.Storage().Format)
 
 				PVWithoutAffinity := &corev1.PersistentVolume{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "remote-pv",
 					},
 					Spec: corev1.PersistentVolumeSpec{
-						Capacity:               ressources,
+						Capacity:               resources,
 						AccessModes:            []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 						PersistentVolumeSource: corev1.PersistentVolumeSource{CSI: &corev1.CSIPersistentVolumeSource{Driver: "test", VolumeHandle: "test"}},
 						NodeAffinity:           nil,

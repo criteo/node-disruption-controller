@@ -61,7 +61,7 @@ var _ = Describe("NodeDisruptionBudget controller", func() {
 			})
 
 			AfterEach(func() {
-				clearAllNodeDisruptionRessources()
+				clearAllNodeDisruptionResources()
 			})
 
 			When("Nodes changes in the cluster", func() {

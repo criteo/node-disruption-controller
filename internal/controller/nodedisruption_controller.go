@@ -72,7 +72,7 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// If the ressource was not found, nothing has to be done
+			// If the resource was not found, nothing has to be done
 			return clusterResult, nil
 		}
 		return clusterResult, err
@@ -101,7 +101,7 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		logger.Info("Updating Status, done with", "state", nd.Status.State)
 		return clusterResult, reconciler.UpdateStatus(ctx)
 	}
-	logger.Info("Reconcilation successful", "state", nd.Status.State)
+	logger.Info("Reconciliation successful", "state", nd.Status.State)
 	return clusterResult, nil
 }
 

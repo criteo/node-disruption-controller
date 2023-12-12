@@ -19,7 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Resolver use Kubernetes selectors to return ressources
+// Resolver use Kubernetes selectors to return resources
 type Resolver struct {
 	Client client.Client
 }

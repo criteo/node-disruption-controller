@@ -35,13 +35,13 @@ func (m *MockBudget) TolerateDisruption(resolver.NodeSet) bool {
 	return m.tolerate
 }
 
-// Check health make a synchronous health check on the underlying ressource of a budget
+// Check health make a synchronous health check on the underlying resource of a budget
 func (m *MockBudget) CheckHealth(context.Context) error {
 	m.healthChecked = true
 	return m.health
 }
 
-// Check health make a synchronous health check on the underlying ressource of a budget
+// Check health make a synchronous health check on the underlying resource of a budget
 func (m *MockBudget) CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption) error {
 	m.healthChecked = true
 	return m.health
