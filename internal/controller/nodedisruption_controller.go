@@ -24,6 +24,7 @@ import (
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
+	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -45,6 +46,37 @@ type NodeDisruptionReconcilerConfig struct {
 	// Reject NodeDisruption if its node selector overlaps an older NodeDisruption's selector
 	RejectOverlappingDisruption bool
 }
+
+var (
+	NodeDisruptionState = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "node_disruption_state",
+			Help: "State of node disruption: pending=0, rejected=1, accepted=2",
+		},
+		[]string{"node_disruption_name"},
+	)
+	NodeDisruptionCreated = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "node_disruption_created",
+			Help: "Date of create of the node disruption",
+		},
+		[]string{"node_disruption_name"},
+	)
+	NodeDisruptionDeadline = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "node_disruption_deadline",
+			Help: "Date of the deadline of the node disruption (0 if unset)",
+		},
+		[]string{"node_disruption_name"},
+	)
+	NodeDisruptionImpactedNodes = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "node_disruption_impacted_node",
+			Help: "high cardinality: create a metric for each node impacted by a given node disruption",
+		},
+		[]string{"node_disruption_name", "node_name"},
+	)
+)
 
 // NodeDisruptionReconciler reconciles NodeDisruptions
 type NodeDisruptionReconciler struct {
@@ -72,11 +104,14 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// If the resource was not found, nothing has to be done
+			PruneNodeDisruptionMetric(req.NamespacedName.Name)
+			// If the ressource was not found, nothing has to be done
 			return clusterResult, nil
 		}
 		return clusterResult, err
 	}
+	logger.Info("Updating metrics")
+	UpdateNodeDisruptionMetric(nd)
 
 	logger.Info("Start reconcile of NodeDisruption", "state", nd.Status.State, "retryDate", nd.Status.NextRetryDate.Time)
 	if time.Now().Before(nd.Status.NextRetryDate.Time) {
@@ -103,6 +138,38 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	logger.Info("Reconciliation successful", "state", nd.Status.State)
 	return clusterResult, nil
+}
+
+// PruneNodeDisruptionMetric remove metrics for a Node Disruption that don't exist anymore
+func PruneNodeDisruptionMetric(nd_name string) {
+	NodeDisruptionState.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
+	NodeDisruptionCreated.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
+	NodeDisruptionDeadline.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
+	NodeDisruptionImpactedNodes.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
+}
+
+func UpdateNodeDisruptionMetric(nd *nodedisruptionv1alpha1.NodeDisruption) {
+	nd_state := 0
+	if nd.Status.State == nodedisruptionv1alpha1.Pending {
+		nd_state = 0
+	} else if nd.Status.State == nodedisruptionv1alpha1.Rejected {
+		nd_state = 1
+	} else if nd.Status.State == nodedisruptionv1alpha1.Granted {
+		nd_state = 2
+	}
+	NodeDisruptionState.WithLabelValues(nd.Name).Set(float64(nd_state))
+	NodeDisruptionCreated.WithLabelValues(nd.Name).Set(float64(nd.CreationTimestamp.Unix()))
+	// Deadline might not be set so it will be 0 but timestamp in Go are not Unix epoch
+	// so converting a 0 timestamp will not result in epoch 0. We override this to have nice values
+	deadline := nd.Spec.Retry.Deadline.Unix()
+	if nd.Spec.Retry.Deadline.IsZero() {
+		deadline = 0
+	}
+	NodeDisruptionDeadline.WithLabelValues(nd.Name).Set(float64(deadline))
+
+	for _, node_name := range nd.Status.DisruptedNodes {
+		NodeDisruptionImpactedNodes.WithLabelValues(nd.Name, node_name).Set(1)
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.

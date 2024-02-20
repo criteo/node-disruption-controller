@@ -34,6 +34,7 @@ import (
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/internal/controller"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -47,6 +48,13 @@ func init() {
 
 	utilruntime.Must(nodedisruptionv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
+
+	metrics.Registry.MustRegister(
+		controller.NodeDisruptionState,
+		controller.NodeDisruptionCreated,
+		controller.NodeDisruptionDeadline,
+		controller.NodeDisruptionImpactedNodes,
+	)
 }
 
 func main() {

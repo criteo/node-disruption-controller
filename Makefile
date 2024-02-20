@@ -157,7 +157,7 @@ KINDCONFIG ?= $(shell pwd)/.kubecfg
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.1
-CONTROLLER_TOOLS_VERSION ?= v0.12.0
+CONTROLLER_TOOLS_VERSION ?= v0.14.0
 KIND_VERSION ?= v0.20.0
 
 .PHONY: kustomize
