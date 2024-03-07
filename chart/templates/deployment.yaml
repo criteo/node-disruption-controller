@@ -39,6 +39,10 @@ spec:
         securityContext: {{- toYaml .Values.controllerManager.kubeRbacProxy.containerSecurityContext
           | nindent 10 }}
       - args: {{- toYaml .Values.controllerManager.manager.args | nindent 8 }}
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
         command:
         - /manager
         env:
