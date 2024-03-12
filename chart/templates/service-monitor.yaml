@@ -1,0 +1,37 @@
+{{ if .Values.controllerManager.serviceMonitor.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "chart.fullname" . }}-prometheus-metrics
+  labels:
+    control-plane: controller-manager
+  {{- include "chart.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    control-plane: controller-manager
+  {{- include "chart.selectorLabels" . | nindent 4 }}
+  ports:
+  - name: http
+    port: 8081
+    protocol: TCP
+    targetPort: http
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: node-disruption-controller
+  labels:
+    control-plane: controller-manager
+spec:
+  endpoints:
+  - port: http
+    interval: 60s
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+{{ end }}
