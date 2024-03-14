@@ -51,7 +51,7 @@ var (
 	NodeDisruptionState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "node_disruption_state",
-			Help: "State of node disruption: pending=0, rejected=1, accepted=2",
+			Help: "State of node disruption: pending=0, rejected=-1, accepted=1",
 		},
 		[]string{"node_disruption_name"},
 	)
@@ -153,9 +153,9 @@ func UpdateNodeDisruptionMetric(nd *nodedisruptionv1alpha1.NodeDisruption) {
 	if nd.Status.State == nodedisruptionv1alpha1.Pending {
 		nd_state = 0
 	} else if nd.Status.State == nodedisruptionv1alpha1.Rejected {
-		nd_state = 1
+		nd_state = -1
 	} else if nd.Status.State == nodedisruptionv1alpha1.Granted {
-		nd_state = 2
+		nd_state = 1
 	}
 	NodeDisruptionState.WithLabelValues(nd.Name).Set(float64(nd_state))
 	NodeDisruptionCreated.WithLabelValues(nd.Name).Set(float64(nd.CreationTimestamp.Unix()))
