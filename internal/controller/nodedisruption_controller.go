@@ -52,6 +52,20 @@ const (
 )
 
 var (
+	NodeDisruptionGrantedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: METIC_PREFIX + "node_disruption_granted_total",
+			Help: "Total number of granted node disruptions",
+		},
+		[]string{},
+	)
+	NodeDisruptionRejectedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: METIC_PREFIX + "node_disruption_rejected_total",
+			Help: "Total number of rejected node disruptions",
+		},
+		[]string{},
+	)
 	NodeDisruptionState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: METIC_PREFIX + "node_disruption_state",
@@ -217,6 +231,11 @@ func (ndr *SingleNodeDisruptionReconciler) TryTransitionState(ctx context.Contex
 		err := ndr.tryTransitionToGranted(ctx)
 		if err != nil {
 			return err
+		}
+		if ndr.NodeDisruption.Status.State == nodedisruptionv1alpha1.Granted {
+			NodeDisruptionGrantedTotal.WithLabelValues().Inc()
+		} else if ndr.NodeDisruption.Status.State == nodedisruptionv1alpha1.Rejected {
+			NodeDisruptionRejectedTotal.WithLabelValues().Inc()
 		}
 	}
 	// If the disruption is not Pending nor unknown, the state is final
