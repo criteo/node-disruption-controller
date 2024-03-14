@@ -47,31 +47,35 @@ type NodeDisruptionReconcilerConfig struct {
 	RejectOverlappingDisruption bool
 }
 
+const (
+	METIC_PREFIX = "node_disruption_controller_"
+)
+
 var (
 	NodeDisruptionState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "node_disruption_state",
+			Name: METIC_PREFIX + "node_disruption_state",
 			Help: "State of node disruption: pending=0, rejected=-1, accepted=1",
 		},
 		[]string{"node_disruption_name"},
 	)
 	NodeDisruptionCreated = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "node_disruption_created",
+			Name: METIC_PREFIX + "node_disruption_created",
 			Help: "Date of create of the node disruption",
 		},
 		[]string{"node_disruption_name"},
 	)
 	NodeDisruptionDeadline = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "node_disruption_deadline",
+			Name: METIC_PREFIX + "node_disruption_deadline",
 			Help: "Date of the deadline of the node disruption (0 if unset)",
 		},
 		[]string{"node_disruption_name"},
 	)
 	NodeDisruptionImpactedNodes = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "node_disruption_impacted_node",
+			Name: METIC_PREFIX + "node_disruption_impacted_node",
 			Help: "high cardinality: create a metric for each node impacted by a given node disruption",
 		},
 		[]string{"node_disruption_name", "node_name"},
