@@ -133,10 +133,10 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	if !reflect.DeepEqual(nd.Status, reconciler.NodeDisruption.Status) {
-		logger.Info("Updating Status, done with", "state", nd.Status.State)
+		logger.Info("Updating Status, done with", "state", reconciler.NodeDisruption.Status.State)
 		return clusterResult, reconciler.UpdateStatus(ctx)
 	}
-	logger.Info("Reconciliation successful", "state", nd.Status.State)
+	logger.Info("Reconciliation successful", "state", reconciler.NodeDisruption.Status.State)
 	return clusterResult, nil
 }
 
