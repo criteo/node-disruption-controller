@@ -47,31 +47,49 @@ type NodeDisruptionReconcilerConfig struct {
 	RejectOverlappingDisruption bool
 }
 
+const (
+	METIC_PREFIX = "node_disruption_controller_"
+)
+
 var (
+	NodeDisruptionGrantedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: METIC_PREFIX + "node_disruption_granted_total",
+			Help: "Total number of granted node disruptions",
+		},
+		[]string{},
+	)
+	NodeDisruptionRejectedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: METIC_PREFIX + "node_disruption_rejected_total",
+			Help: "Total number of rejected node disruptions",
+		},
+		[]string{},
+	)
 	NodeDisruptionState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "node_disruption_state",
-			Help: "State of node disruption: pending=0, rejected=1, accepted=2",
+			Name: METIC_PREFIX + "node_disruption_state",
+			Help: "State of node disruption: pending=0, rejected=-1, accepted=1",
 		},
 		[]string{"node_disruption_name"},
 	)
 	NodeDisruptionCreated = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "node_disruption_created",
+			Name: METIC_PREFIX + "node_disruption_created",
 			Help: "Date of create of the node disruption",
 		},
 		[]string{"node_disruption_name"},
 	)
 	NodeDisruptionDeadline = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "node_disruption_deadline",
+			Name: METIC_PREFIX + "node_disruption_deadline",
 			Help: "Date of the deadline of the node disruption (0 if unset)",
 		},
 		[]string{"node_disruption_name"},
 	)
 	NodeDisruptionImpactedNodes = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "node_disruption_impacted_node",
+			Name: METIC_PREFIX + "node_disruption_impacted_node",
 			Help: "high cardinality: create a metric for each node impacted by a given node disruption",
 		},
 		[]string{"node_disruption_name", "node_name"},
@@ -133,10 +151,10 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	if !reflect.DeepEqual(nd.Status, reconciler.NodeDisruption.Status) {
-		logger.Info("Updating Status, done with", "state", nd.Status.State)
+		logger.Info("Updating Status, done with", "state", reconciler.NodeDisruption.Status.State)
 		return clusterResult, reconciler.UpdateStatus(ctx)
 	}
-	logger.Info("Reconciliation successful", "state", nd.Status.State)
+	logger.Info("Reconciliation successful", "state", reconciler.NodeDisruption.Status.State)
 	return clusterResult, nil
 }
 
@@ -153,9 +171,9 @@ func UpdateNodeDisruptionMetric(nd *nodedisruptionv1alpha1.NodeDisruption) {
 	if nd.Status.State == nodedisruptionv1alpha1.Pending {
 		nd_state = 0
 	} else if nd.Status.State == nodedisruptionv1alpha1.Rejected {
-		nd_state = 1
+		nd_state = -1
 	} else if nd.Status.State == nodedisruptionv1alpha1.Granted {
-		nd_state = 2
+		nd_state = 1
 	}
 	NodeDisruptionState.WithLabelValues(nd.Name).Set(float64(nd_state))
 	NodeDisruptionCreated.WithLabelValues(nd.Name).Set(float64(nd.CreationTimestamp.Unix()))
@@ -213,6 +231,11 @@ func (ndr *SingleNodeDisruptionReconciler) TryTransitionState(ctx context.Contex
 		err := ndr.tryTransitionToGranted(ctx)
 		if err != nil {
 			return err
+		}
+		if ndr.NodeDisruption.Status.State == nodedisruptionv1alpha1.Granted {
+			NodeDisruptionGrantedTotal.WithLabelValues().Inc()
+		} else if ndr.NodeDisruption.Status.State == nodedisruptionv1alpha1.Rejected {
+			NodeDisruptionRejectedTotal.WithLabelValues().Inc()
 		}
 	}
 	// If the disruption is not Pending nor unknown, the state is final
