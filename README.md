@@ -29,6 +29,10 @@ Kubernetes primitives and PDB only provide pod-level healthiness protection thro
 
 Unfortunately, at the moment Kubernetes doesn't provide such API. Prior to the Node Disruption Controller (NDC), we addressed this need through periodic checks, where we set `maxUnavailable=0` if the service is unhealthy. However, asynchronous health checking is dangerous as it hard to check when the last health check was made (the periodic system could be broken and the state not updated for a long time) or it cannot be fast enough and lead to multiple evictions being granted before reacting. NDC prevents these issues by providing a synchronous health checking API.
 
+## API reference
+
+[API reference](./DOC.md)
+
 ## Description
 
 The primary purpose of the Node Disruption Controller (NDC) is to provide a set of APIs to ensure safety of voluntary node-level disruptions, such as maintenances. Typically, maintenance involves the eviction of pods from a node and potentially rendering the node temporarily or permanently unavailable.
