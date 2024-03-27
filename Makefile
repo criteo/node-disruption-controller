@@ -60,6 +60,10 @@ fmt: ## Run go fmt against code.
 lint: golangci ## Run golangci
 	$(LOCALBIN)/golangci-lint run
 
+.PHONY: gen-doc
+gen-doc: crdoc ## Run golangci
+	$(LOCALBIN)/crdoc --resources config/crd/bases/ --output DOC.md
+
 .PHONY: vet
 vet: ## Run go vet against code.
 	go vet ./...
@@ -183,6 +187,10 @@ $(ENVTEST): $(LOCALBIN)
 .PHONY: golangci
 golangci: ## Run golangci
 	test -s $(LOCALBIN)/golangci-lint || GOBIN=$(LOCALBIN) go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+.PHONY: crdoc
+crdoc: ## Run crdoc
+	test -s $(LOCALBIN)/crdoc|| GOBIN=$(LOCALBIN) go install fybrik.io/crdoc@v0.6.3
 
 $(KIND): $(LOCALBIN)
 	test -s $(LOCALBIN)/kind || GOBIN=$(LOCALBIN) GO111MODULE=on go install sigs.k8s.io/kind@$(KIND_VERSION)
