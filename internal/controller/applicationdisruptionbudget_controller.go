@@ -41,6 +41,7 @@ import (
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // ApplicationDisruptionBudgetReconciler reconciles a ApplicationDisruptionBudget object
@@ -68,15 +69,22 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 	logger := log.FromContext(ctx)
 	adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
 	err := r.Client.Get(ctx, req.NamespacedName, adb)
+	ref := nodedisruptionv1alpha1.NamespacedName{
+		Namespace: req.Namespace,
+		Name:      req.Name,
+		Kind:      "ApplicationDisruptionBudget",
+	}
 
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// If the resource was not found, nothing has to be done
+			PruneADBMetrics(ref)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
+	UpdateADBMetrics(ref, adb)
 	logger.Info("Start reconcile of adb", "version", adb.ResourceVersion)
 
 	resolver := ApplicationDisruptionBudgetResolver{
@@ -96,6 +104,18 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 	}
 
 	return ctrl.Result{}, err
+}
+
+// PruneNodeDisruptionMetric remove metrics for an ADB that don't exist anymore
+func PruneADBMetrics(ref nodedisruptionv1alpha1.NamespacedName) {
+	DisruptionBudgetMaxDisruptions.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	PruneBudgetStatusMetrics(ref)
+}
+
+// UpdateADBMetrics update metrics for an ADB
+func UpdateADBMetrics(ref nodedisruptionv1alpha1.NamespacedName, adb *nodedisruptionv1alpha1.ApplicationDisruptionBudget) {
+	DisruptionBudgetMaxDisruptions.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(float64(adb.Spec.MaxDisruptions))
+	UpdateBudgetStatusMetrics(ref, adb.Status)
 }
 
 // MapFuncBuilder returns a MapFunc that is used to dispatch reconcile requests to

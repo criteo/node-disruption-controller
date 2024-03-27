@@ -73,14 +73,14 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if err != nil {
 		if errors.IsNotFound(err) {
-			PruneNodeDisruptionMetric(req.NamespacedName.Name)
+			PruneNodeDisruptionMetrics(req.NamespacedName.Name)
 			// If the ressource was not found, nothing has to be done
 			return clusterResult, nil
 		}
 		return clusterResult, err
 	}
 	logger.Info("Updating metrics")
-	UpdateNodeDisruptionMetric(nd)
+	UpdateNodeDisruptionMetrics(nd)
 
 	logger.Info("Start reconcile of NodeDisruption", "state", nd.Status.State, "retryDate", nd.Status.NextRetryDate.Time)
 	if time.Now().Before(nd.Status.NextRetryDate.Time) {
@@ -110,14 +110,15 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 }
 
 // PruneNodeDisruptionMetric remove metrics for a Node Disruption that don't exist anymore
-func PruneNodeDisruptionMetric(nd_name string) {
+func PruneNodeDisruptionMetrics(nd_name string) {
 	NodeDisruptionState.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 	NodeDisruptionCreated.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 	NodeDisruptionDeadline.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 	NodeDisruptionImpactedNodes.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 }
 
-func UpdateNodeDisruptionMetric(nd *nodedisruptionv1alpha1.NodeDisruption) {
+// UpdateNodeDisruptionMetrics update metrics for a Node Disruption
+func UpdateNodeDisruptionMetrics(nd *nodedisruptionv1alpha1.NodeDisruption) {
 	nd_state := 0
 	if nd.Status.State == nodedisruptionv1alpha1.Pending {
 		nd_state = 0
