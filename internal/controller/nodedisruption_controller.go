@@ -47,55 +47,6 @@ type NodeDisruptionReconcilerConfig struct {
 	RejectOverlappingDisruption bool
 }
 
-const (
-	METIC_PREFIX = "node_disruption_controller_"
-)
-
-var (
-	NodeDisruptionGrantedTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: METIC_PREFIX + "node_disruption_granted_total",
-			Help: "Total number of granted node disruptions",
-		},
-		[]string{},
-	)
-	NodeDisruptionRejectedTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: METIC_PREFIX + "node_disruption_rejected_total",
-			Help: "Total number of rejected node disruptions",
-		},
-		[]string{},
-	)
-	NodeDisruptionState = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: METIC_PREFIX + "node_disruption_state",
-			Help: "State of node disruption: pending=0, rejected=-1, accepted=1",
-		},
-		[]string{"node_disruption_name"},
-	)
-	NodeDisruptionCreated = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: METIC_PREFIX + "node_disruption_created",
-			Help: "Date of create of the node disruption",
-		},
-		[]string{"node_disruption_name"},
-	)
-	NodeDisruptionDeadline = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: METIC_PREFIX + "node_disruption_deadline",
-			Help: "Date of the deadline of the node disruption (0 if unset)",
-		},
-		[]string{"node_disruption_name"},
-	)
-	NodeDisruptionImpactedNodes = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: METIC_PREFIX + "node_disruption_impacted_node",
-			Help: "high cardinality: create a metric for each node impacted by a given node disruption",
-		},
-		[]string{"node_disruption_name", "node_name"},
-	)
-)
-
 // NodeDisruptionReconciler reconciles NodeDisruptions
 type NodeDisruptionReconciler struct {
 	client.Client
@@ -380,13 +331,15 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 
 		if !budget.TolerateDisruption(disruptedNodes) {
 			anyFailed = true
+			ref := budget.GetNamespacedName()
 			status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
-				Reference: budget.GetNamespacedName(),
+				Reference: ref,
 				Reason:    "No more disruption allowed",
 				Ok:        false,
 			}
 			statuses = append(statuses, status)
 			logger.Info("Disruption rejected because: ", "status", status)
+			DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
 			break
 		}
 		impactedBudgets = append(impactedBudgets, budget)
@@ -398,15 +351,17 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 
 	for _, budget := range impactedBudgets {
 		err := budget.CheckHealth(ctx)
+		ref := budget.GetNamespacedName()
 		if err != nil {
 			anyFailed = true
 			status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
-				Reference: budget.GetNamespacedName(),
+				Reference: ref,
 				Reason:    fmt.Sprintf("Unhealthy: %s", err),
 				Ok:        false,
 			}
 			statuses = append(statuses, status)
 			logger.Info("Disruption rejected because: ", "status", status)
+			DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
 			break
 		}
 	}
@@ -417,17 +372,20 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 
 	for _, budget := range impactedBudgets {
 		err := budget.CallHealthHook(ctx, ndr.NodeDisruption)
+		ref := budget.GetNamespacedName()
 		if err != nil {
 			anyFailed = true
 			status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
-				Reference: budget.GetNamespacedName(),
+				Reference: ref,
 				Reason:    fmt.Sprintf("Unhealthy: %s", err),
 				Ok:        false,
 			}
 			statuses = append(statuses, status)
 			logger.Info("Disruption rejected because: ", "status", status)
+			DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
 			break
 		}
+		DisruptionBudgetGrantedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
 		statuses = append(statuses, nodedisruptionv1alpha1.DisruptedBudgetStatus{
 			Reference: budget.GetNamespacedName(),
 			Reason:    "",

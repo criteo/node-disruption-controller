@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"strconv"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -76,7 +77,7 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Start reconcile of ADB", "version", adb.ResourceVersion)
+	logger.Info("Start reconcile of adb", "version", adb.ResourceVersion)
 
 	resolver := ApplicationDisruptionBudgetResolver{
 		ApplicationDisruptionBudget: adb.DeepCopy(),
@@ -107,7 +108,7 @@ func (r *ApplicationDisruptionBudgetReconciler) MapFuncBuilder() handler.MapFunc
 		if err != nil {
 			// We cannot return an error so at least it should be logged
 			logger := log.FromContext(context.Background())
-			logger.Error(err, "Could not list ADBs in watch function")
+			logger.Error(err, "Could not list adbs in watch function")
 			return requests
 		}
 
@@ -231,6 +232,7 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.ApplicationDisruptionBudget.Spec.HealthHook.URL, bytes.NewReader(data))
 	if err != nil {
+		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(nd.Namespace, nd.Name, nd.Kind).Inc()
 		return err
 	}
 
@@ -240,13 +242,17 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 
 	resp, err := client.Do(req)
 	if err != nil {
+		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(nd.Namespace, nd.Name, nd.Kind).Inc()
 		return err
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(nd.Namespace, nd.Name, nd.Kind).Inc()
 		return err
 	}
+
+	DisruptionBudgetCheckHealthHookStatusCodeTotal.WithLabelValues(nd.Namespace, nd.Name, nd.Kind, strconv.Itoa(resp.StatusCode)).Inc()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
