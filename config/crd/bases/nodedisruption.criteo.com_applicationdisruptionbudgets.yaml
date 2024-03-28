@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.12.0
+    controller-gen.kubebuilder.io/version: v0.14.0
   name: applicationdisruptionbudgets.nodedisruption.criteo.com
 spec:
   group: nodedisruption.criteo.com
@@ -33,14 +33,19 @@ spec:
           API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -49,10 +54,10 @@ spec:
               of ApplicationDisruptionBudget
             properties:
               healthHook:
-                description: Define a optional hook to call when validating a NodeDisruption.
-                  It perform a POST http request containing the NodeDisruption that
-                  is being validated. Maintenance will proceed only if the endpoint
-                  responds 2XX.
+                description: |-
+                  Define a optional hook to call when validating a NodeDisruption.
+                  It perform a POST http request containing the NodeDisruption that is being validated.
+                  Maintenance will proceed only if the endpoint responds 2XX.
                 properties:
                   caBundle:
                     description: a PEM encoded CA bundle which will be used to validate
@@ -65,10 +70,10 @@ spec:
                     type: string
                 type: object
               healthURL:
-                description: Health URL is deprecated and will be removed in next
-                  version, please use healthHook instead. Health URL is an optional
-                  URL to call to validate the state of the application. Maintenance
-                  will proceed only if the endpoint responds 2XX.
+                description: |-
+                  Health URL is deprecated and will be removed in next version, please use healthHook instead.
+                  Health URL is an optional URL to call to validate the state of the application.
+                  Maintenance will proceed only if the endpoint responds 2XX.
                 type: string
               maxDisruptions:
                 description: A NodeDisruption is allowed if at most "maxDisruptions"
@@ -82,24 +87,24 @@ spec:
                     description: matchExpressions is a list of label selector requirements.
                       The requirements are ANDed.
                     items:
-                      description: A label selector requirement is a selector that
-                        contains values, a key, and an operator that relates the key
-                        and values.
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
                       properties:
                         key:
                           description: key is the label key that the selector applies
                             to.
                           type: string
                         operator:
-                          description: operator represents a key's relationship to
-                            a set of values. Valid operators are In, NotIn, Exists
-                            and DoesNotExist.
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
                           type: string
                         values:
-                          description: values is an array of string values. If the
-                            operator is In or NotIn, the values array must be non-empty.
-                            If the operator is Exists or DoesNotExist, the values
-                            array must be empty. This array is replaced during a strategic
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
                             merge patch.
                           items:
                             type: string
@@ -112,11 +117,10 @@ spec:
                   matchLabels:
                     additionalProperties:
                       type: string
-                    description: matchLabels is a map of {key,value} pairs. A single
-                      {key,value} in the matchLabels map is equivalent to an element
-                      of matchExpressions, whose key field is "key", the operator
-                      is "In", and the values array contains only "value". The requirements
-                      are ANDed.
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
@@ -128,24 +132,24 @@ spec:
                     description: matchExpressions is a list of label selector requirements.
                       The requirements are ANDed.
                     items:
-                      description: A label selector requirement is a selector that
-                        contains values, a key, and an operator that relates the key
-                        and values.
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
                       properties:
                         key:
                           description: key is the label key that the selector applies
                             to.
                           type: string
                         operator:
-                          description: operator represents a key's relationship to
-                            a set of values. Valid operators are In, NotIn, Exists
-                            and DoesNotExist.
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
                           type: string
                         values:
-                          description: values is an array of string values. If the
-                            operator is In or NotIn, the values array must be non-empty.
-                            If the operator is Exists or DoesNotExist, the values
-                            array must be empty. This array is replaced during a strategic
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
                             merge patch.
                           items:
                             type: string
@@ -158,11 +162,10 @@ spec:
                   matchLabels:
                     additionalProperties:
                       type: string
-                    description: matchLabels is a map of {key,value} pairs. A single
-                      {key,value} in the matchLabels map is equivalent to an element
-                      of matchExpressions, whose key field is "key", the operator
-                      is "In", and the values array contains only "value". The requirements
-                      are ANDed.
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
@@ -198,7 +201,8 @@ spec:
                 description: Number of disruption allowed on the nodes of this
                 type: integer
               watchedNodes:
-                description: List of nodes that are being watched by the controller
+                description: |-
+                  List of nodes that are being watched by the controller
                   Disruption on this nodes will will be made according to the budget
                   of this cluster.
                 items:
