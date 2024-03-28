@@ -5,6 +5,7 @@ import (
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
+	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -23,6 +24,39 @@ type Budget interface {
 	UpdateStatus(context.Context) error
 	// Get the name, namespace and kind of bduget
 	GetNamespacedName() nodedisruptionv1alpha1.NamespacedName
+}
+
+// PruneBudgetMetrics remove metrics for a Disruption Budget that doesn't exist anymore
+func PruneBudgetStatusMetrics(ref nodedisruptionv1alpha1.NamespacedName) {
+	DisruptionBudgetDisruptions.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	DisruptionBudgetWatchedNodes.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	DisruptionBudgetDisruptionsAllowed.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	DisruptionBudgetCurrentDisruptions.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+
+	DisruptionBudgetRejectedTotal.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	DisruptionBudgetGrantedTotal.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	DisruptionBudgetCheckHealthHookStatusCodeTotal.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	DisruptionBudgetCheckHealthHookErrorTotal.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+}
+
+func UpdateBudgetStatusMetrics(ref nodedisruptionv1alpha1.NamespacedName, status nodedisruptionv1alpha1.DisruptionBudgetStatus) {
+	for _, node_name := range status.WatchedNodes {
+		DisruptionBudgetWatchedNodes.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, node_name).Set(1)
+	}
+	for _, disruption := range status.Disruptions {
+		nd_state := 0
+		state := nodedisruptionv1alpha1.NodeDisruptionState(disruption.State)
+		if state == nodedisruptionv1alpha1.Pending {
+			nd_state = 0
+		} else if state == nodedisruptionv1alpha1.Rejected {
+			nd_state = -1
+		} else if state == nodedisruptionv1alpha1.Granted {
+			nd_state = 1
+		}
+		DisruptionBudgetDisruptions.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, disruption.Name).Set(float64(nd_state))
+	}
+	DisruptionBudgetDisruptionsAllowed.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(float64(status.DisruptionsAllowed))
+	DisruptionBudgetCurrentDisruptions.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(float64(status.CurrentDisruptions))
 }
 
 // GetAllBudgetsInSync fetch all the budgets from Kubernetes and synchronise them

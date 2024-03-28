@@ -35,6 +35,7 @@ import (
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // NodeDisruptionBudgetReconciler reconciles a NodeDisruptionBudget object
@@ -57,16 +58,26 @@ type NodeDisruptionBudgetReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *NodeDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
 	ndb := &nodedisruptionv1alpha1.NodeDisruptionBudget{}
 	err := r.Client.Get(ctx, req.NamespacedName, ndb)
+	ref := nodedisruptionv1alpha1.NamespacedName{
+		Namespace: req.Namespace,
+		Name:      req.Name,
+		Kind:      "NodeDisruptionBudget",
+	}
 
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// If the resource was not found, nothing has to be done
+			PruneNDBMetrics(ref)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
+
+	UpdateNDBMetrics(ref, ndb)
+	logger.Info("Start reconcile of NDB", "version", ndb.ResourceVersion)
 
 	resolver := NodeDisruptionBudgetResolver{
 		NodeDisruptionBudget: ndb.DeepCopy(),
@@ -86,10 +97,24 @@ func (r *NodeDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl
 	return ctrl.Result{}, err
 }
 
+// PruneNodeDisruptionMetric remove metrics for a NDB that don't exist anymore
+func PruneNDBMetrics(ref nodedisruptionv1alpha1.NamespacedName) {
+	DisruptionBudgetMaxDisruptedNodes.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	DisruptionBudgetMinUndisruptedNodes.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	PruneBudgetStatusMetrics(ref)
+}
+
+// UpdateNDBMetrics update metrics for a NDB
+func UpdateNDBMetrics(ref nodedisruptionv1alpha1.NamespacedName, ndb *nodedisruptionv1alpha1.NodeDisruptionBudget) {
+	DisruptionBudgetMaxDisruptedNodes.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(float64(ndb.Spec.MaxDisruptedNodes))
+	DisruptionBudgetMinUndisruptedNodes.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(float64(ndb.Spec.MinUndisruptedNodes))
+	UpdateBudgetStatusMetrics(ref, ndb.Status)
+}
+
 // MapFuncBuilder returns a MapFunc that is used to dispatch reconcile requests to
 // budgets when an event is triggered by one of their matching object
 func (r *NodeDisruptionBudgetReconciler) MapFuncBuilder() handler.MapFunc {
-	// Look for all ADBs in the namespace, then see if they match the object
+	// Look for all NDBs in the namespace, then see if they match the object
 	return func(ctx context.Context, object client.Object) (requests []reconcile.Request) {
 		ndbs := nodedisruptionv1alpha1.NodeDisruptionBudgetList{}
 		err := r.Client.List(ctx, &ndbs, &client.ListOptions{Namespace: object.GetNamespace()})
