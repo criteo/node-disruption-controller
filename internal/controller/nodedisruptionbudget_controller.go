@@ -196,11 +196,6 @@ func (r *NodeDisruptionBudgetResolver) TolerateDisruption(disruptedNodes resolve
 	return r.NodeDisruptionBudget.Status.DisruptionsAllowed-disruptedNodesCount >= 0
 }
 
-// NodeDisruption CheckHealth is always true
-func (r *NodeDisruptionBudgetResolver) CheckHealth(context.Context) error {
-	return nil
-}
-
 // Call a lifecycle hook in order to synchronously validate a Node Disruption
 func (r *NodeDisruptionBudgetResolver) CallHealthHook(_ context.Context, _ nodedisruptionv1alpha1.NodeDisruption) error {
 	return nil
