@@ -1,3 +1,5 @@
+![example workflow](https://github.com/criteo/node-disruption-controller/actions/workflows/test.yaml/badge.svg)
+
 # Node Disruption Controller
 
 Node-disruption-controller (NDC) is a way to control node disruptions (e.g. for maintenance purpose) in a Kubernetes cluster.
