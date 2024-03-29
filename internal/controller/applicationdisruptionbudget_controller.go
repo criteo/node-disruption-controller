@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"strconv"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -40,6 +41,7 @@ import (
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // ApplicationDisruptionBudgetReconciler reconciles a ApplicationDisruptionBudget object
@@ -67,16 +69,23 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 	logger := log.FromContext(ctx)
 	adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
 	err := r.Client.Get(ctx, req.NamespacedName, adb)
+	ref := nodedisruptionv1alpha1.NamespacedName{
+		Namespace: req.Namespace,
+		Name:      req.Name,
+		Kind:      "ApplicationDisruptionBudget",
+	}
 
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// If the resource was not found, nothing has to be done
+			PruneADBMetrics(ref)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Start reconcile of ADB", "version", adb.ResourceVersion)
+	UpdateADBMetrics(ref, adb)
+	logger.Info("Start reconcile of adb", "version", adb.ResourceVersion)
 
 	resolver := ApplicationDisruptionBudgetResolver{
 		ApplicationDisruptionBudget: adb.DeepCopy(),
@@ -97,6 +106,18 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 	return ctrl.Result{}, err
 }
 
+// PruneNodeDisruptionMetric remove metrics for an ADB that don't exist anymore
+func PruneADBMetrics(ref nodedisruptionv1alpha1.NamespacedName) {
+	DisruptionBudgetMaxDisruptions.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	PruneBudgetStatusMetrics(ref)
+}
+
+// UpdateADBMetrics update metrics for an ADB
+func UpdateADBMetrics(ref nodedisruptionv1alpha1.NamespacedName, adb *nodedisruptionv1alpha1.ApplicationDisruptionBudget) {
+	DisruptionBudgetMaxDisruptions.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(float64(adb.Spec.MaxDisruptions))
+	UpdateBudgetStatusMetrics(ref, adb.Status)
+}
+
 // MapFuncBuilder returns a MapFunc that is used to dispatch reconcile requests to
 // budgets when an event is triggered by one of their matching object
 func (r *ApplicationDisruptionBudgetReconciler) MapFuncBuilder() handler.MapFunc {
@@ -107,7 +128,7 @@ func (r *ApplicationDisruptionBudgetReconciler) MapFuncBuilder() handler.MapFunc
 		if err != nil {
 			// We cannot return an error so at least it should be logged
 			logger := log.FromContext(context.Background())
-			logger.Error(err, "Could not list ADBs in watch function")
+			logger.Error(err, "Could not list adbs in watch function")
 			return requests
 		}
 
@@ -231,6 +252,7 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.ApplicationDisruptionBudget.Spec.HealthHook.URL, bytes.NewReader(data))
 	if err != nil {
+		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(nd.Namespace, nd.Name, nd.Kind).Inc()
 		return err
 	}
 
@@ -240,13 +262,17 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 
 	resp, err := client.Do(req)
 	if err != nil {
+		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(nd.Namespace, nd.Name, nd.Kind).Inc()
 		return err
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(nd.Namespace, nd.Name, nd.Kind).Inc()
 		return err
 	}
+
+	DisruptionBudgetCheckHealthHookStatusCodeTotal.WithLabelValues(nd.Namespace, nd.Name, nd.Kind, strconv.Itoa(resp.StatusCode)).Inc()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
