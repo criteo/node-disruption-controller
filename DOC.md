@@ -98,14 +98,9 @@ ApplicationDisruptionBudgetSpec defines the desired state of ApplicationDisrupti
         <td><b><a href="#applicationdisruptionbudgetspechealthhook">healthHook</a></b></td>
         <td>object</td>
         <td>
-          Define a optional hook to call when validating a NodeDisruption. It perform a POST http request containing the NodeDisruption that is being validated. Maintenance will proceed only if the endpoint responds 2XX.<br/>
-        </td>
-        <td>false</td>
-      </tr><tr>
-        <td><b>healthURL</b></td>
-        <td>string</td>
-        <td>
-          Health URL is deprecated and will be removed in next version, please use healthHook instead. Health URL is an optional URL to call to validate the state of the application. Maintenance will proceed only if the endpoint responds 2XX.<br/>
+          Define a optional hook to call when validating a NodeDisruption.
+It perform a POST http request containing the NodeDisruption that is being validated.
+Maintenance will proceed only if the endpoint responds 2XX.<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -131,7 +126,9 @@ ApplicationDisruptionBudgetSpec defines the desired state of ApplicationDisrupti
 
 
 
-Define a optional hook to call when validating a NodeDisruption. It perform a POST http request containing the NodeDisruption that is being validated. Maintenance will proceed only if the endpoint responds 2XX.
+Define a optional hook to call when validating a NodeDisruption.
+It perform a POST http request containing the NodeDisruption that is being validated.
+Maintenance will proceed only if the endpoint responds 2XX.
 
 <table>
     <thead>
@@ -187,7 +184,9 @@ PodSelector query over pods whose nodes are managed by the disruption budget.
         <td><b>matchLabels</b></td>
         <td>map[string]string</td>
         <td>
-          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.<br/>
+          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+map is equivalent to an element of matchExpressions, whose key field is "key", the
+operator is "In", and the values array contains only "value". The requirements are ANDed.<br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -199,7 +198,8 @@ PodSelector query over pods whose nodes are managed by the disruption budget.
 
 
 
-A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+A label selector requirement is a selector that contains values, a key, and an operator that
+relates the key and values.
 
 <table>
     <thead>
@@ -221,14 +221,18 @@ A label selector requirement is a selector that contains values, a key, and an o
         <td><b>operator</b></td>
         <td>string</td>
         <td>
-          operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.<br/>
+          operator represents a key's relationship to a set of values.
+Valid operators are In, NotIn, Exists and DoesNotExist.<br/>
         </td>
         <td>true</td>
       </tr><tr>
         <td><b>values</b></td>
         <td>[]string</td>
         <td>
-          values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.<br/>
+          values is an array of string values. If the operator is In or NotIn,
+the values array must be non-empty. If the operator is Exists or DoesNotExist,
+the values array must be empty. This array is replaced during a strategic
+merge patch.<br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -262,7 +266,9 @@ PVCSelector query over PVCs whose nodes are managed by the disruption budget.
         <td><b>matchLabels</b></td>
         <td>map[string]string</td>
         <td>
-          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.<br/>
+          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+map is equivalent to an element of matchExpressions, whose key field is "key", the
+operator is "In", and the values array contains only "value". The requirements are ANDed.<br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -274,7 +280,8 @@ PVCSelector query over PVCs whose nodes are managed by the disruption budget.
 
 
 
-A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+A label selector requirement is a selector that contains values, a key, and an operator that
+relates the key and values.
 
 <table>
     <thead>
@@ -296,14 +303,18 @@ A label selector requirement is a selector that contains values, a key, and an o
         <td><b>operator</b></td>
         <td>string</td>
         <td>
-          operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.<br/>
+          operator represents a key's relationship to a set of values.
+Valid operators are In, NotIn, Exists and DoesNotExist.<br/>
         </td>
         <td>true</td>
       </tr><tr>
         <td><b>values</b></td>
         <td>[]string</td>
         <td>
-          values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.<br/>
+          values is an array of string values. If the operator is In or NotIn,
+the values array must be non-empty. If the operator is Exists or DoesNotExist,
+the values array must be empty. This array is replaced during a strategic
+merge patch.<br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -355,7 +366,9 @@ DisruptionBudgetStatus defines the observed state of ApplicationDisruptionBudget
         <td><b>watchedNodes</b></td>
         <td>[]string</td>
         <td>
-          List of nodes that are being watched by the controller Disruption on this nodes will will be made according to the budget of this cluster.<br/>
+          List of nodes that are being watched by the controller
+Disruption on this nodes will will be made according to the budget
+of this cluster.<br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -517,7 +530,9 @@ NodeSelector query over pods whose nodes are managed by the disruption budget.
         <td><b>matchLabels</b></td>
         <td>map[string]string</td>
         <td>
-          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.<br/>
+          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+map is equivalent to an element of matchExpressions, whose key field is "key", the
+operator is "In", and the values array contains only "value". The requirements are ANDed.<br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -529,7 +544,8 @@ NodeSelector query over pods whose nodes are managed by the disruption budget.
 
 
 
-A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+A label selector requirement is a selector that contains values, a key, and an operator that
+relates the key and values.
 
 <table>
     <thead>
@@ -551,14 +567,18 @@ A label selector requirement is a selector that contains values, a key, and an o
         <td><b>operator</b></td>
         <td>string</td>
         <td>
-          operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.<br/>
+          operator represents a key's relationship to a set of values.
+Valid operators are In, NotIn, Exists and DoesNotExist.<br/>
         </td>
         <td>true</td>
       </tr><tr>
         <td><b>values</b></td>
         <td>[]string</td>
         <td>
-          values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.<br/>
+          values is an array of string values. If the operator is In or NotIn,
+the values array must be non-empty. If the operator is Exists or DoesNotExist,
+the values array must be empty. This array is replaced during a strategic
+merge patch.<br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -610,7 +630,9 @@ DisruptionBudgetStatus defines the observed state of ApplicationDisruptionBudget
         <td><b>watchedNodes</b></td>
         <td>[]string</td>
         <td>
-          List of nodes that are being watched by the controller Disruption on this nodes will will be made according to the budget of this cluster.<br/>
+          List of nodes that are being watched by the controller
+Disruption on this nodes will will be made according to the budget
+of this cluster.<br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -765,7 +787,9 @@ Label query over nodes that will be impacted by the disruption
         <td><b>matchLabels</b></td>
         <td>map[string]string</td>
         <td>
-          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.<br/>
+          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+map is equivalent to an element of matchExpressions, whose key field is "key", the
+operator is "In", and the values array contains only "value". The requirements are ANDed.<br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -777,7 +801,8 @@ Label query over nodes that will be impacted by the disruption
 
 
 
-A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+A label selector requirement is a selector that contains values, a key, and an operator that
+relates the key and values.
 
 <table>
     <thead>
@@ -799,14 +824,18 @@ A label selector requirement is a selector that contains values, a key, and an o
         <td><b>operator</b></td>
         <td>string</td>
         <td>
-          operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.<br/>
+          operator represents a key's relationship to a set of values.
+Valid operators are In, NotIn, Exists and DoesNotExist.<br/>
         </td>
         <td>true</td>
       </tr><tr>
         <td><b>values</b></td>
         <td>[]string</td>
         <td>
-          values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.<br/>
+          values is an array of string values. If the operator is In or NotIn,
+the values array must be non-empty. If the operator is Exists or DoesNotExist,
+the values array must be empty. This array is replaced during a strategic
+merge patch.<br/>
         </td>
         <td>false</td>
       </tr></tbody>

@@ -88,11 +88,6 @@ func (in *ApplicationDisruptionBudgetSpec) DeepCopyInto(out *ApplicationDisrupti
 	*out = *in
 	in.PodSelector.DeepCopyInto(&out.PodSelector)
 	in.PVCSelector.DeepCopyInto(&out.PVCSelector)
-	if in.HealthURL != nil {
-		in, out := &in.HealthURL, &out.HealthURL
-		*out = new(string)
-		**out = **in
-	}
 	out.HealthHook = in.HealthHook
 }
 

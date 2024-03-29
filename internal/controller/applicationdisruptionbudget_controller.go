@@ -215,27 +215,6 @@ func (r *ApplicationDisruptionBudgetResolver) GetNamespacedName() nodedisruption
 	}
 }
 
-// Check health make a synchronous health check on the underlying resource of a budget
-func (r *ApplicationDisruptionBudgetResolver) CheckHealth(context.Context) error {
-	if r.ApplicationDisruptionBudget.Spec.HealthURL == nil {
-		return nil
-	}
-	resp, err := http.Get(*r.ApplicationDisruptionBudget.Spec.HealthURL)
-	if err != nil {
-		return err
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return nil
-	}
-	return fmt.Errorf("http server responded with non 2XX status code: %s", string(body))
-}
-
 // Call a lifecycle hook in order to synchronously validate a Node Disruption
 func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption) error {
 	if r.ApplicationDisruptionBudget.Spec.HealthHook.URL == "" {

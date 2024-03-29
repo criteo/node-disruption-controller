@@ -351,27 +351,6 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 	}
 
 	for _, budget := range impactedBudgets {
-		err := budget.CheckHealth(ctx)
-		ref := budget.GetNamespacedName()
-		if err != nil {
-			anyFailed = true
-			status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
-				Reference: ref,
-				Reason:    fmt.Sprintf("Unhealthy: %s", err),
-				Ok:        false,
-			}
-			statuses = append(statuses, status)
-			logger.Info("Disruption rejected because: ", "status", status)
-			DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
-			break
-		}
-	}
-
-	if anyFailed {
-		return anyFailed, statuses
-	}
-
-	for _, budget := range impactedBudgets {
 		err := budget.CallHealthHook(ctx, ndr.NodeDisruption)
 		ref := budget.GetNamespacedName()
 		if err != nil {
