@@ -78,7 +78,9 @@ func (r *Resolver) GetNodesFromNamespacedPodSelector(ctx context.Context, podSel
 	}
 
 	for _, pod := range pods.Items {
-		nodeNames.Insert(pod.Spec.NodeName)
+		if pod.Spec.NodeName != "" {
+			nodeNames.Insert(pod.Spec.NodeName)
+		}
 	}
 	return nodeSet, nil
 }
