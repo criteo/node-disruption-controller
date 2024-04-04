@@ -38,9 +38,13 @@ func PruneBudgetStatusMetrics(ref nodedisruptionv1alpha1.NamespacedName) {
 }
 
 func UpdateBudgetStatusMetrics(ref nodedisruptionv1alpha1.NamespacedName, status nodedisruptionv1alpha1.DisruptionBudgetStatus) {
+	// delete before updating to avoid leaking metrics/nodes over time
+	DisruptionBudgetWatchedNodes.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
 	for _, node_name := range status.WatchedNodes {
 		DisruptionBudgetWatchedNodes.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, node_name).Set(1)
 	}
+	// delete before updating to avoid leaking metrics/disruptions over time
+	DisruptionBudgetDisruptions.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
 	for _, disruption := range status.Disruptions {
 		nd_state := 0
 		state := nodedisruptionv1alpha1.NodeDisruptionState(disruption.State)
