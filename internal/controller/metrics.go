@@ -26,12 +26,19 @@ var (
 		},
 		[]string{},
 	)
-	NodeDisruptionState = promauto.With(metrics.Registry).NewGaugeVec(
+	NodeDisruptionStateAsValue = promauto.With(metrics.Registry).NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: METIC_PREFIX + "node_disruption_state_value",
 			Help: "State of node disruption: pending=0, rejected=-1, accepted=1",
 		},
 		[]string{"node_disruption_name"},
+	)
+	NodeDisruptionStateAsLabel = promauto.With(metrics.Registry).NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: METIC_PREFIX + "node_disruption_state_label",
+			Help: "State of node disruption: 0 not in this state; 1 is in state",
+		},
+		[]string{"node_disruption_name", "state"},
 	)
 	NodeDisruptionCreated = promauto.With(metrics.Registry).NewGaugeVec(
 		prometheus.GaugeOpts{
