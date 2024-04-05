@@ -111,7 +111,8 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // PruneNodeDisruptionMetric remove metrics for a Node Disruption that don't exist anymore
 func PruneNodeDisruptionMetrics(nd_name string) {
-	NodeDisruptionState.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
+	NodeDisruptionStateAsValue.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
+	NodeDisruptionStateAsLabel.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 	NodeDisruptionCreated.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 	NodeDisruptionDeadline.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 	NodeDisruptionImpactedNodes.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
@@ -122,12 +123,21 @@ func UpdateNodeDisruptionMetrics(nd *nodedisruptionv1alpha1.NodeDisruption) {
 	nd_state := 0
 	if nd.Status.State == nodedisruptionv1alpha1.Pending {
 		nd_state = 0
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending)).Set(1)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted)).Set(0)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected)).Set(0)
 	} else if nd.Status.State == nodedisruptionv1alpha1.Rejected {
 		nd_state = -1
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending)).Set(0)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected)).Set(1)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted)).Set(0)
 	} else if nd.Status.State == nodedisruptionv1alpha1.Granted {
 		nd_state = 1
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending)).Set(0)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected)).Set(0)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted)).Set(1)
 	}
-	NodeDisruptionState.WithLabelValues(nd.Name).Set(float64(nd_state))
+	NodeDisruptionStateAsValue.WithLabelValues(nd.Name).Set(float64(nd_state))
 	NodeDisruptionCreated.WithLabelValues(nd.Name).Set(float64(nd.CreationTimestamp.Unix()))
 	// Deadline might not be set so it will be 0 but timestamp in Go are not Unix epoch
 	// so converting a 0 timestamp will not result in epoch 0. We override this to have nice values
