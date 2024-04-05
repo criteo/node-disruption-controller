@@ -149,6 +149,9 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 				Expect(k8sClient.Create(ctx, &pod1)).Should(Succeed())
 				pod2 := newPod("podadb2", ADBNamespace, "node2", podLabels)
 				Expect(k8sClient.Create(ctx, &pod2)).Should(Succeed())
+				// Add a pod without node, i.e. pending
+				pod3 := newPod("podadb3", ADBNamespace, "", podLabels)
+				Expect(k8sClient.Create(ctx, &pod3)).Should(Succeed())
 				pvc3 := newPVC("pvc3", ADBNamespace, "node3-pv-local", podLabels)
 				Expect(k8sClient.Create(ctx, &pvc3)).Should(Succeed())
 
