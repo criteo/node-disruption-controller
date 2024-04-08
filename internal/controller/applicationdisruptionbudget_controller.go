@@ -229,9 +229,11 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 		return err
 	}
 
+	namespacedName := r.GetNamespacedName()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.ApplicationDisruptionBudget.Spec.HealthHook.URL, bytes.NewReader(data))
 	if err != nil {
-		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(nd.Namespace, nd.Name, nd.Kind).Inc()
+		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(namespacedName.Namespace, namespacedName.Name, namespacedName.Kind).Inc()
 		return err
 	}
 
@@ -241,17 +243,17 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 
 	resp, err := client.Do(req)
 	if err != nil {
-		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(nd.Namespace, nd.Name, nd.Kind).Inc()
+		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(namespacedName.Namespace, namespacedName.Name, namespacedName.Kind).Inc()
 		return err
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(nd.Namespace, nd.Name, nd.Kind).Inc()
+		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(namespacedName.Namespace, namespacedName.Name, namespacedName.Kind).Inc()
 		return err
 	}
 
-	DisruptionBudgetCheckHealthHookStatusCodeTotal.WithLabelValues(nd.Namespace, nd.Name, nd.Kind, strconv.Itoa(resp.StatusCode)).Inc()
+	DisruptionBudgetCheckHealthHookStatusCodeTotal.WithLabelValues(namespacedName.Namespace, namespacedName.Name, namespacedName.Kind, strconv.Itoa(resp.StatusCode)).Inc()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
