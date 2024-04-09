@@ -26,25 +26,25 @@ type Budget interface {
 
 // PruneBudgetMetrics remove metrics for a Disruption Budget that doesn't exist anymore
 func PruneBudgetStatusMetrics(ref nodedisruptionv1alpha1.NamespacedName) {
-	DisruptionBudgetDisruptions.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
-	DisruptionBudgetWatchedNodes.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
-	DisruptionBudgetDisruptionsAllowed.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
-	DisruptionBudgetCurrentDisruptions.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	DisruptionBudgetDisruptions.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
+	DisruptionBudgetWatchedNodes.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
+	DisruptionBudgetDisruptionsAllowed.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
+	DisruptionBudgetCurrentDisruptions.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
 
-	DisruptionBudgetRejectedTotal.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
-	DisruptionBudgetGrantedTotal.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
-	DisruptionBudgetCheckHealthHookStatusCodeTotal.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
-	DisruptionBudgetCheckHealthHookErrorTotal.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	DisruptionBudgetRejectedTotal.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
+	DisruptionBudgetGrantedTotal.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
+	DisruptionBudgetCheckHealthHookStatusCodeTotal.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
+	DisruptionBudgetCheckHealthHookErrorTotal.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
 }
 
 func UpdateBudgetStatusMetrics(ref nodedisruptionv1alpha1.NamespacedName, status nodedisruptionv1alpha1.DisruptionBudgetStatus) {
 	// delete before updating to avoid leaking metrics/nodes over time
-	DisruptionBudgetWatchedNodes.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	DisruptionBudgetWatchedNodes.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
 	for _, node_name := range status.WatchedNodes {
 		DisruptionBudgetWatchedNodes.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, node_name).Set(1)
 	}
-	// delete before updating to avoid leaking metrics/disruptions over time
-	DisruptionBudgetDisruptions.DeletePartialMatch(prometheus.Labels{"budget_disruption_namespace": ref.Namespace, "budget_disruption_name": ref.Name, "budget_disruption_kind": ref.Kind})
+	// delete before updating to avoid leaking metrics/disruptions over timex
+	DisruptionBudgetDisruptions.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
 	for _, disruption := range status.Disruptions {
 		nd_state := 0
 		state := nodedisruptionv1alpha1.NodeDisruptionState(disruption.State)
