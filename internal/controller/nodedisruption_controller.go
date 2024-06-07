@@ -281,6 +281,19 @@ func (ndr *SingleNodeDisruptionReconciler) generateRejectedStatus(reason string)
 	}
 }
 
+// appendRejectedStatus add a new status on top of the existing ones
+func (ndr *SingleNodeDisruptionReconciler) appendRejectedStatus(reason string) []nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	return append(ndr.NodeDisruption.Status.DisruptedDisruptionBudgets, nodedisruptionv1alpha1.DisruptedBudgetStatus{
+		Reference: nodedisruptionv1alpha1.NamespacedName{
+			Namespace: ndr.NodeDisruption.Namespace,
+			Name:      ndr.NodeDisruption.Name,
+			Kind:      ndr.NodeDisruption.Kind,
+		},
+		Reason: reason,
+		Ok:     false,
+	})
+}
+
 // ValidateOverlappingDisruption checks that the current disruption doesn't overlap and existing one
 func (ndr *SingleNodeDisruptionReconciler) ValidateOverlappingDisruption(ctx context.Context, disruptedNodes resolver.NodeSet) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus, err error) {
 	allDisruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
@@ -322,7 +335,8 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 	}
 
 	if ndr.NodeDisruption.Spec.Retry.IsAfterDeadline() {
-		return true, ndr.generateRejectedStatus("Deadline exceeded"), nil
+		// Conserve the statuses of the previous iteration to conserve the reason of rejection
+		return true, ndr.appendRejectedStatus("Deadline exceeded"), nil
 	}
 
 	return false, statuses, nil
