@@ -282,13 +282,9 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateOverlappingDisruption(ctx con
 			otherDisruptedNodes := resolver.NewNodeSetFromStringList(otherDisruption.Status.DisruptedNodes)
 			if otherDisruptedNodes.Intersection(disruptedNodes).Len() > 0 {
 				status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
-					Reference: nodedisruptionv1alpha1.NamespacedName{
-						Namespace: ndr.NodeDisruption.Namespace,
-						Name:      ndr.NodeDisruption.Name,
-						Kind:      ndr.NodeDisruption.Kind,
-					},
-					Reason: fmt.Sprintf(`Selected node(s) overlap with another disruption: ”%s"`, otherDisruption.Name),
-					Ok:     false,
+					Reference: ndr.getNodeDisruptionReference(),
+					Reason:    fmt.Sprintf(`Selected node(s) overlap with another disruption: ”%s"`, otherDisruption.Name),
+					Ok:        false,
 				}
 				return true, status, nil
 			}
@@ -298,30 +294,32 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateOverlappingDisruption(ctx con
 	return false, status, nil
 }
 
-// ValidateInternalConstraints check that the Node Disruption is valid against internal constraints
-// such as deadline or constraints on number of impacted nodes
-func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx context.Context) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus, err error) {
-	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
-	reference := nodedisruptionv1alpha1.NamespacedName{
+func (ndr *SingleNodeDisruptionReconciler) getNodeDisruptionReference() nodedisruptionv1alpha1.NamespacedName {
+	return nodedisruptionv1alpha1.NamespacedName{
 		Namespace: ndr.NodeDisruption.Namespace,
 		Name:      ndr.NodeDisruption.Name,
 		Kind:      ndr.NodeDisruption.Kind,
 	}
+}
+
+// ValidateInternalConstraints check that the Node Disruption is valid against internal constraints
+// such as deadline or constraints on number of impacted nodes
+func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx context.Context) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus, err error) {
+	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
 
 	if ndr.NodeDisruption.Spec.Retry.IsAfterDeadline() {
 		status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
-			Reference: reference,
+			Reference: ndr.getNodeDisruptionReference(),
 			Reason:    "Deadline exceeded",
 			Ok:        false,
 		}
 		// Conserve the statuses of the previous iteration to conserve the reason of rejection
-		statuses := ndr.NodeDisruption.Status.DisruptedDisruptionBudgets
-		return true, append(statuses, status), nil
+		return true, append(ndr.NodeDisruption.Status.DisruptedDisruptionBudgets, status), nil
 	}
 
 	if ndr.Config.RejectEmptyNodeDisruption && disruptedNodes.Len() == 0 {
 		status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
-			Reference: reference,
+			Reference: ndr.getNodeDisruptionReference(),
 			Reason:    "No node matching label selector",
 			Ok:        false,
 		}
@@ -330,12 +328,7 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 
 	if ndr.Config.RejectOverlappingDisruption {
 		anyFailed, status, err := ndr.ValidateOverlappingDisruption(ctx, disruptedNodes)
-		if err != nil {
-			return false, nil, err
-		}
-		if anyFailed {
-			return true, []nodedisruptionv1alpha1.DisruptedBudgetStatus{status}, nil
-		}
+		return anyFailed, []nodedisruptionv1alpha1.DisruptedBudgetStatus{status}, err
 	}
 
 	return false, statuses, nil
