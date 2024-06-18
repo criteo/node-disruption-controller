@@ -14,10 +14,10 @@ type Budget interface {
 	Sync(context.Context) error
 	// Check if the budget would be impacted by an operation on the provided set of nodes
 	IsImpacted(resolver.NodeSet) bool
-	// Return the number of disruption allowed considering a list of current node disruptions
-	TolerateDisruption(resolver.NodeSet) bool
+	// Return the status of this budget when trying to compute the status for it
+	TryValidateDisruptionFromBudgetConstraints(resolver.NodeSet) nodedisruptionv1alpha1.DisruptedBudgetStatus
 	// Call a lifecycle hook in order to synchronously validate a Node Disruption
-	CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption) error
+	TryValidateDisruptionFromHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption) nodedisruptionv1alpha1.DisruptedBudgetStatus
 	// Apply the budget's status to Kubernetes
 	UpdateStatus(context.Context) error
 	// Get the name, namespace and kind of bduget

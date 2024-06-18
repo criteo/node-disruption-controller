@@ -528,7 +528,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							Name:      "test",
 							Kind:      "NodeDisruptionBudget",
 						},
-						Reason: "No more disruption allowed",
+						Reason: "Number of allowed disrupted nodes exceeded (Remaining disruptions allowed: 0, Number of current node disrupted: 0, Requested nodes to disrupt: 2)",
 						Ok:     false,
 					}}
 					Expect(disruption.Status.DisruptedDisruptionBudgets).Should(Equal(expectedStatus))
@@ -553,7 +553,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							Name:      "test",
 							Kind:      "NodeDisruptionBudget",
 						},
-						Reason: "No more disruption allowed",
+						Reason: "Number of allowed disrupted nodes exceeded (Remaining disruptions allowed: 0, Number of current node disrupted: 0, Requested nodes to disrupt: 2)",
 						Ok:     false,
 					}, {
 						Reference: nodedisruptionv1alpha1.NamespacedName{

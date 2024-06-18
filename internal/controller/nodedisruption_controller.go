@@ -346,17 +346,12 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 			continue
 		}
 
-		if !budget.TolerateDisruption(disruptedNodes) {
+		status := budget.TryValidateDisruptionFromBudgetConstraints(disruptedNodes)
+		if !status.Ok {
 			anyFailed = true
-			ref := budget.GetNamespacedName()
-			status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
-				Reference: ref,
-				Reason:    "No more disruption allowed",
-				Ok:        false,
-			}
 			statuses = append(statuses, status)
 			logger.Info("Disruption rejected because: ", "status", status)
-			DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
+			DisruptionBudgetRejectedTotal.WithLabelValues(status.Reference.Namespace, status.Reference.Name, status.Reference.Kind).Inc()
 			break
 		}
 		impactedBudgets = append(impactedBudgets, budget)
@@ -367,26 +362,16 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 	}
 
 	for _, budget := range impactedBudgets {
-		err := budget.CallHealthHook(ctx, ndr.NodeDisruption)
+		status := budget.TryValidateDisruptionFromHealthHook(ctx, ndr.NodeDisruption)
 		ref := budget.GetNamespacedName()
-		if err != nil {
+		statuses = append(statuses, status)
+		if !status.Ok {
 			anyFailed = true
-			status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
-				Reference: ref,
-				Reason:    fmt.Sprintf("Unhealthy: %s", err),
-				Ok:        false,
-			}
-			statuses = append(statuses, status)
 			logger.Info("Disruption rejected because: ", "status", status)
 			DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
 			break
 		}
 		DisruptionBudgetGrantedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
-		statuses = append(statuses, nodedisruptionv1alpha1.DisruptedBudgetStatus{
-			Reference: budget.GetNamespacedName(),
-			Reason:    "",
-			Ok:        true,
-		})
 	}
 
 	return anyFailed, statuses

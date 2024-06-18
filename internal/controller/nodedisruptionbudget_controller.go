@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"reflect"
 
@@ -190,15 +191,32 @@ func (r *NodeDisruptionBudgetResolver) IsImpacted(disruptedNodes resolver.NodeSe
 }
 
 // Return the number of disruption allowed considering a list of current node disruptions
-func (r *NodeDisruptionBudgetResolver) TolerateDisruption(disruptedNodes resolver.NodeSet) bool {
+func (r *NodeDisruptionBudgetResolver) TryValidateDisruptionFromBudgetConstraints(disruptedNodes resolver.NodeSet) nodedisruptionv1alpha1.DisruptedBudgetStatus {
 	watchedNodes := resolver.NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes)
 	disruptedNodesCount := watchedNodes.Intersection(disruptedNodes).Len()
-	return r.NodeDisruptionBudget.Status.DisruptionsAllowed-disruptedNodesCount >= 0
+	if r.NodeDisruptionBudget.Status.DisruptionsAllowed-disruptedNodesCount >= 0 {
+		return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: r.GetNamespacedName(),
+			Reason:    "",
+			Ok:        true,
+		}
+	} else {
+		return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: r.GetNamespacedName(),
+			Reason: fmt.Sprintf("Number of allowed disrupted nodes exceeded (Remaining disruptions allowed: %d, Number of current node disrupted: %d, Requested nodes to disrupt: %d)",
+				r.NodeDisruptionBudget.Status.DisruptionsAllowed, r.NodeDisruptionBudget.Status.CurrentDisruptions, disruptedNodesCount),
+			Ok: false,
+		}
+	}
 }
 
 // Call a lifecycle hook in order to synchronously validate a Node Disruption
-func (r *NodeDisruptionBudgetResolver) CallHealthHook(_ context.Context, _ nodedisruptionv1alpha1.NodeDisruption) error {
-	return nil
+func (r *NodeDisruptionBudgetResolver) TryValidateDisruptionFromHealthHook(_ context.Context, _ nodedisruptionv1alpha1.NodeDisruption) nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+		Reference: r.GetNamespacedName(),
+		Reason:    "",
+		Ok:        true,
+	}
 }
 
 func (r *NodeDisruptionBudgetResolver) UpdateStatus(ctx context.Context) error {
