@@ -472,6 +472,102 @@ var _ = Describe("NodeDisruption controller", func() {
 					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Rejected))
 				})
 			})
+
+			When("a node disruption's deadline is elapsed", func() {
+				It("It keeps the previous status", func() {
+					By("creating a budget that rejects everything")
+					ndb := &nodedisruptionv1alpha1.NodeDisruptionBudget{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruptionBudget",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionBudgetSpec{
+							NodeSelector:      metav1.LabelSelector{MatchLabels: nodeLabels1},
+							MaxDisruptedNodes: 0,
+						},
+					}
+					Expect(k8sClient.Create(ctx, ndb)).Should(Succeed())
+
+					By("creating a new NodeDisruption with retry enabled and an far deadline")
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruption",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      NDName,
+							Namespace: NDNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Retry: nodedisruptionv1alpha1.RetrySpec{
+								Enabled: true,
+								// Deadline is 1m in future
+								Deadline: metav1.Time{Time: time.Now().Add(time.Minute)},
+							},
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					By("trying at least one and filling the status field")
+					Eventually(func() bool {
+						err := k8sClient.Get(ctx, NDLookupKey, disruption)
+						if err != nil {
+							panic("should be able to get")
+						}
+						return !disruption.Status.NextRetryDate.IsZero()
+					}, timeout, interval).Should(BeTrue())
+
+					By("properly filling the status")
+					expectedStatus := []nodedisruptionv1alpha1.DisruptedBudgetStatus{{
+						Reference: nodedisruptionv1alpha1.NamespacedName{
+							Namespace: "",
+							Name:      "test",
+							Kind:      "NodeDisruptionBudget",
+						},
+						Reason: "No more disruption allowed",
+						Ok:     false,
+					}}
+					Expect(disruption.Status.DisruptedDisruptionBudgets).Should(Equal(expectedStatus))
+
+					By("forcing deadline exceeding")
+					disruption.Spec.Retry.Deadline = metav1.Time{Time: time.Now().Add(-time.Minute)}
+					Expect(k8sClient.Update(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					By("waiting for rejection")
+					Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+						err := k8sClient.Get(ctx, NDLookupKey, disruption)
+						if err != nil {
+							panic("should be able to get")
+						}
+						return disruption.Status.State
+					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Rejected))
+
+					By("keeping previous status")
+					expectedStatus = []nodedisruptionv1alpha1.DisruptedBudgetStatus{{
+						Reference: nodedisruptionv1alpha1.NamespacedName{
+							Namespace: "",
+							Name:      "test",
+							Kind:      "NodeDisruptionBudget",
+						},
+						Reason: "No more disruption allowed",
+						Ok:     false,
+					}, {
+						Reference: nodedisruptionv1alpha1.NamespacedName{
+							Namespace: "",
+							Name:      "test-nodedisruption",
+							Kind:      "NodeDisruption",
+						},
+						Reason: "Deadline exceeded",
+						Ok:     false,
+					}}
+					Expect(disruption.Status.DisruptedDisruptionBudgets).Should(Equal(expectedStatus))
+				})
+			})
+
 		})
 
 		Context("If a NodeDisruption's nodeSelector does not match any node", func() {
