@@ -115,6 +115,12 @@ func PruneADBMetrics(ref nodedisruptionv1alpha1.NamespacedName) {
 // UpdateADBMetrics update metrics for an ADB
 func UpdateADBMetrics(ref nodedisruptionv1alpha1.NamespacedName, adb *nodedisruptionv1alpha1.ApplicationDisruptionBudget) {
 	DisruptionBudgetMaxDisruptions.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(float64(adb.Spec.MaxDisruptions))
+	if adb.Spec.Freeze.Enabled {
+		DisruptionBudgetFrozen.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(1)
+	} else {
+		DisruptionBudgetFrozen.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(0)
+	}
+
 	UpdateBudgetStatusMetrics(ref, adb.Status)
 }
 
@@ -200,6 +206,14 @@ func (r *ApplicationDisruptionBudgetResolver) IsImpacted(disruptedNodes resolver
 
 // Return the number of disruption allowed considering a list of current node disruptions
 func (r *ApplicationDisruptionBudgetResolver) TryValidateDisruptionFromBudgetConstraints(_ resolver.NodeSet) nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	if r.ApplicationDisruptionBudget.Spec.Freeze.Enabled {
+		return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: r.GetNamespacedName(),
+			Reason:    fmt.Sprintf("Budget frozen: %s", r.ApplicationDisruptionBudget.Spec.Freeze.Reason),
+			Ok:        false,
+		}
+	}
+
 	if r.ApplicationDisruptionBudget.Status.DisruptionsAllowed-1 >= 0 {
 		return nodedisruptionv1alpha1.DisruptedBudgetStatus{
 			Reference: r.GetNamespacedName(),

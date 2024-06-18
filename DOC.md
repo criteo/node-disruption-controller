@@ -95,6 +95,13 @@ ApplicationDisruptionBudgetSpec defines the desired state of ApplicationDisrupti
         </td>
         <td>true</td>
       </tr><tr>
+        <td><b><a href="#applicationdisruptionbudgetspecfreeze">freeze</a></b></td>
+        <td>object</td>
+        <td>
+          Define the freeze status of the budget. Frozen budget reject all disruptions ignoring any other constraints<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
         <td><b><a href="#applicationdisruptionbudgetspechealthhook">healthHook</a></b></td>
         <td>object</td>
         <td>
@@ -115,6 +122,40 @@ Maintenance will proceed only if the endpoint responds 2XX.<br/>
         <td>object</td>
         <td>
           PVCSelector query over PVCs whose nodes are managed by the disruption budget.<br/>
+        </td>
+        <td>false</td>
+      </tr></tbody>
+</table>
+
+
+### ApplicationDisruptionBudget.spec.freeze
+<sup><sup>[↩ Parent](#applicationdisruptionbudgetspec)</sup></sup>
+
+
+
+Define the freeze status of the budget. Frozen budget reject all disruptions ignoring any other constraints
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody><tr>
+        <td><b>enabled</b></td>
+        <td>boolean</td>
+        <td>
+          Freeze the budget to prevent any disruptions<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>reason</b></td>
+        <td>string</td>
+        <td>
+          Reason of the freeze<br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -493,10 +534,51 @@ NodeDisruptionBudgetSpec defines the desired state of NodeDisruptionBudget
         </td>
         <td>true</td>
       </tr><tr>
+        <td><b><a href="#nodedisruptionbudgetspecfreeze">freeze</a></b></td>
+        <td>object</td>
+        <td>
+          Define the freeze status of the budget. Frozen budget reject all disruptions ignoring any other constraints<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
         <td><b><a href="#nodedisruptionbudgetspecnodeselector">nodeSelector</a></b></td>
         <td>object</td>
         <td>
           NodeSelector query over pods whose nodes are managed by the disruption budget.<br/>
+        </td>
+        <td>false</td>
+      </tr></tbody>
+</table>
+
+
+### NodeDisruptionBudget.spec.freeze
+<sup><sup>[↩ Parent](#nodedisruptionbudgetspec)</sup></sup>
+
+
+
+Define the freeze status of the budget. Frozen budget reject all disruptions ignoring any other constraints
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody><tr>
+        <td><b>enabled</b></td>
+        <td>boolean</td>
+        <td>
+          Freeze the budget to prevent any disruptions<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>reason</b></td>
+        <td>string</td>
+        <td>
+          Reason of the freeze<br/>
         </td>
         <td>false</td>
       </tr></tbody>

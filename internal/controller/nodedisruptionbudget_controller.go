@@ -109,6 +109,11 @@ func PruneNDBMetrics(ref nodedisruptionv1alpha1.NamespacedName) {
 func UpdateNDBMetrics(ref nodedisruptionv1alpha1.NamespacedName, ndb *nodedisruptionv1alpha1.NodeDisruptionBudget) {
 	DisruptionBudgetMaxDisruptedNodes.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(float64(ndb.Spec.MaxDisruptedNodes))
 	DisruptionBudgetMinUndisruptedNodes.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(float64(ndb.Spec.MinUndisruptedNodes))
+	if ndb.Spec.Freeze.Enabled {
+		DisruptionBudgetFrozen.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(1)
+	} else {
+		DisruptionBudgetFrozen.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(0)
+	}
 	UpdateBudgetStatusMetrics(ref, ndb.Status)
 }
 
@@ -192,6 +197,14 @@ func (r *NodeDisruptionBudgetResolver) IsImpacted(disruptedNodes resolver.NodeSe
 
 // Return the number of disruption allowed considering a list of current node disruptions
 func (r *NodeDisruptionBudgetResolver) TryValidateDisruptionFromBudgetConstraints(disruptedNodes resolver.NodeSet) nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	if r.NodeDisruptionBudget.Spec.Freeze.Enabled {
+		return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: r.GetNamespacedName(),
+			Reason:    fmt.Sprintf("Budget frozen: %s", r.NodeDisruptionBudget.Spec.Freeze.Reason),
+			Ok:        false,
+		}
+	}
+
 	watchedNodes := resolver.NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes)
 	disruptedNodesCount := watchedNodes.Intersection(disruptedNodes).Len()
 	if r.NodeDisruptionBudget.Status.DisruptionsAllowed-disruptedNodesCount >= 0 {
