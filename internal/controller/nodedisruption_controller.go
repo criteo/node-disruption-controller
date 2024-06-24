@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/strings/slices"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -45,6 +46,8 @@ type NodeDisruptionReconcilerConfig struct {
 	RetryInterval time.Duration
 	// Reject NodeDisruption if its node selector overlaps an older NodeDisruption's selector
 	RejectOverlappingDisruption bool
+	// Specify which node disruption types are allowed to be granted
+	NodeDisruptionTypes []string
 }
 
 // NodeDisruptionReconciler reconciles NodeDisruptions
@@ -329,6 +332,15 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 	if ndr.Config.RejectOverlappingDisruption {
 		anyFailed, status, err := ndr.ValidateOverlappingDisruption(ctx, disruptedNodes)
 		return anyFailed, []nodedisruptionv1alpha1.DisruptedBudgetStatus{status}, err
+	}
+
+	if len(ndr.Config.NodeDisruptionTypes) != 0 && !slices.Contains(ndr.Config.NodeDisruptionTypes, ndr.NodeDisruption.Spec.Type) {
+		status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: ndr.getNodeDisruptionReference(),
+			Reason:    "Type provided of node disruption is not managed",
+			Ok:        false,
+		}
+		return true, []nodedisruptionv1alpha1.DisruptedBudgetStatus{status}, nil
 	}
 
 	return false, statuses, nil

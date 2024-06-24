@@ -756,6 +756,13 @@ NodeDisruptionSpec defines the desired state of NodeDisruption
           Configure the retrying behavior of a NodeDisruption<br/>
         </td>
         <td>false</td>
+      </tr><tr>
+        <td><b>type</b></td>
+        <td>string</td>
+        <td>
+          Type of the node disruption<br/>
+        </td>
+        <td>false</td>
       </tr></tbody>
 </table>
 
