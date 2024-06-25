@@ -17,49 +17,49 @@ var (
 			Name: METIC_PREFIX + "node_disruption_granted_total",
 			Help: "Total number of granted node disruptions",
 		},
-		[]string{},
+		[]string{"type"},
 	)
 	NodeDisruptionRejectedTotal = promauto.With(metrics.Registry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: METIC_PREFIX + "node_disruption_rejected_total",
 			Help: "Total number of rejected node disruptions",
 		},
-		[]string{},
+		[]string{"type"},
 	)
 	NodeDisruptionStateAsValue = promauto.With(metrics.Registry).NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: METIC_PREFIX + "node_disruption_state_value",
 			Help: "State of node disruption: pending=0, rejected=-1, accepted=1",
 		},
-		[]string{"node_disruption_name"},
+		[]string{"node_disruption_name", "type"},
 	)
 	NodeDisruptionStateAsLabel = promauto.With(metrics.Registry).NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: METIC_PREFIX + "node_disruption_state_label",
 			Help: "State of node disruption: 0 not in this state; 1 is in state",
 		},
-		[]string{"node_disruption_name", "state"},
+		[]string{"node_disruption_name", "state", "type"},
 	)
 	NodeDisruptionCreated = promauto.With(metrics.Registry).NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: METIC_PREFIX + "node_disruption_created",
 			Help: "Date of create of the node disruption",
 		},
-		[]string{"node_disruption_name"},
+		[]string{"node_disruption_name", "type"},
 	)
 	NodeDisruptionDeadline = promauto.With(metrics.Registry).NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: METIC_PREFIX + "node_disruption_deadline",
 			Help: "Date of the deadline of the node disruption (0 if unset)",
 		},
-		[]string{"node_disruption_name"},
+		[]string{"node_disruption_name", "type"},
 	)
 	NodeDisruptionImpactedNodes = promauto.With(metrics.Registry).NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: METIC_PREFIX + "node_disruption_impacted_node",
 			Help: "high cardinality: create a metric for each node impacted by a given node disruption",
 		},
-		[]string{"node_disruption_name", "node_name"},
+		[]string{"node_disruption_name", "node_name", "type"},
 	)
 	NodeDisruptionType = promauto.With(metrics.Registry).NewGaugeVec(
 		prometheus.GaugeOpts{
