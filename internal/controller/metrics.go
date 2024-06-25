@@ -61,6 +61,13 @@ var (
 		},
 		[]string{"node_disruption_name", "node_name"},
 	)
+	NodeDisruptionType = promauto.With(metrics.Registry).NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: METIC_PREFIX + "node_disruption_type",
+			Help: "Type of the node disruption",
+		},
+		[]string{"node_disruption_name", "type"},
+	)
 	// DISRUPTION BUDGET METRICS
 	DisruptionBudgetCheckHealthHookStatusCodeTotal = promauto.With(metrics.Registry).NewCounterVec(
 		prometheus.CounterOpts{

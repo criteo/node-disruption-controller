@@ -119,6 +119,7 @@ func PruneNodeDisruptionMetrics(nd_name string) {
 	NodeDisruptionCreated.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 	NodeDisruptionDeadline.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 	NodeDisruptionImpactedNodes.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
+	NodeDisruptionType.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 }
 
 // UpdateNodeDisruptionMetrics update metrics for a Node Disruption
@@ -149,6 +150,7 @@ func UpdateNodeDisruptionMetrics(nd *nodedisruptionv1alpha1.NodeDisruption) {
 		deadline = 0
 	}
 	NodeDisruptionDeadline.WithLabelValues(nd.Name).Set(float64(deadline))
+	NodeDisruptionType.WithLabelValues(nd.Name, nd.Spec.Type).Set(1)
 
 	for _, node_name := range nd.Status.DisruptedNodes {
 		NodeDisruptionImpactedNodes.WithLabelValues(nd.Name, node_name).Set(1)
