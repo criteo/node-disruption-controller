@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"os"
+	"strings"
 	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -56,6 +57,7 @@ func main() {
 	var rejectEmptyNodeDisruption bool
 	var retryInterval time.Duration
 	var rejectOverlappingDisruption bool
+	var nodeDisruptionTypes string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -64,6 +66,7 @@ func main() {
 	flag.BoolVar(&rejectEmptyNodeDisruption, "reject-empty-node-disruption", false, "Reject NodeDisruption matching no actual node.")
 	flag.DurationVar(&retryInterval, "retry-interval", controller.DefaultRetryInterval, "How long to wait between each retry (Default 60s)")
 	flag.BoolVar(&rejectOverlappingDisruption, "reject-overlapping-disruption", false, "Automatically reject any overlapping NodeDisruption (based on node selector), preserving the oldest one")
+	flag.StringVar(&nodeDisruptionTypes, "node-disruption-types", "", "The list of types allowed for a node disruption separated by a comma.")
 
 	opts := zap.Options{
 		Development: true,
@@ -104,6 +107,7 @@ func main() {
 			RejectEmptyNodeDisruption:   rejectEmptyNodeDisruption,
 			RetryInterval:               retryInterval,
 			RejectOverlappingDisruption: rejectOverlappingDisruption,
+			NodeDisruptionTypes:         strings.Split(nodeDisruptionTypes, ","),
 		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "NodeDisruption")

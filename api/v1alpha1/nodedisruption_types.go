@@ -49,6 +49,8 @@ type NodeDisruptionSpec struct {
 	// Label query over nodes that will be impacted by the disruption
 	NodeSelector metav1.LabelSelector `json:"nodeSelector,omitempty"`
 	Retry        RetrySpec            `json:"retry,omitempty"`
+	// Type of the node disruption
+	Type string `json:"type,omitempty"`
 }
 
 // Configure the retrying behavior of a NodeDisruption

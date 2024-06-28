@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/strings/slices"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -45,6 +46,8 @@ type NodeDisruptionReconcilerConfig struct {
 	RetryInterval time.Duration
 	// Reject NodeDisruption if its node selector overlaps an older NodeDisruption's selector
 	RejectOverlappingDisruption bool
+	// Specify which node disruption types are allowed to be granted
+	NodeDisruptionTypes []string
 }
 
 // NodeDisruptionReconciler reconciles NodeDisruptions
@@ -116,6 +119,7 @@ func PruneNodeDisruptionMetrics(nd_name string) {
 	NodeDisruptionCreated.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 	NodeDisruptionDeadline.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 	NodeDisruptionImpactedNodes.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
+	NodeDisruptionType.DeletePartialMatch(prometheus.Labels{"node_disruption_name": nd_name})
 }
 
 // UpdateNodeDisruptionMetrics update metrics for a Node Disruption
@@ -123,32 +127,32 @@ func UpdateNodeDisruptionMetrics(nd *nodedisruptionv1alpha1.NodeDisruption) {
 	nd_state := 0
 	if nd.Status.State == nodedisruptionv1alpha1.Pending {
 		nd_state = 0
-		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending)).Set(1)
-		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted)).Set(0)
-		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected)).Set(0)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending), nd.Spec.Type).Set(1)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted), nd.Spec.Type).Set(0)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected), nd.Spec.Type).Set(0)
 	} else if nd.Status.State == nodedisruptionv1alpha1.Rejected {
 		nd_state = -1
-		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending)).Set(0)
-		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected)).Set(1)
-		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted)).Set(0)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending), nd.Spec.Type).Set(0)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected), nd.Spec.Type).Set(1)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted), nd.Spec.Type).Set(0)
 	} else if nd.Status.State == nodedisruptionv1alpha1.Granted {
 		nd_state = 1
-		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending)).Set(0)
-		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected)).Set(0)
-		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted)).Set(1)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending), nd.Spec.Type).Set(0)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected), nd.Spec.Type).Set(0)
+		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted), nd.Spec.Type).Set(1)
 	}
-	NodeDisruptionStateAsValue.WithLabelValues(nd.Name).Set(float64(nd_state))
-	NodeDisruptionCreated.WithLabelValues(nd.Name).Set(float64(nd.CreationTimestamp.Unix()))
+	NodeDisruptionStateAsValue.WithLabelValues(nd.Name, nd.Spec.Type).Set(float64(nd_state))
+	NodeDisruptionCreated.WithLabelValues(nd.Name, nd.Spec.Type).Set(float64(nd.CreationTimestamp.Unix()))
 	// Deadline might not be set so it will be 0 but timestamp in Go are not Unix epoch
 	// so converting a 0 timestamp will not result in epoch 0. We override this to have nice values
 	deadline := nd.Spec.Retry.Deadline.Unix()
 	if nd.Spec.Retry.Deadline.IsZero() {
 		deadline = 0
 	}
-	NodeDisruptionDeadline.WithLabelValues(nd.Name).Set(float64(deadline))
+	NodeDisruptionDeadline.WithLabelValues(nd.Name, nd.Spec.Type).Set(float64(deadline))
 
 	for _, node_name := range nd.Status.DisruptedNodes {
-		NodeDisruptionImpactedNodes.WithLabelValues(nd.Name, node_name).Set(1)
+		NodeDisruptionImpactedNodes.WithLabelValues(nd.Name, node_name, nd.Spec.Type).Set(1)
 	}
 }
 
@@ -195,9 +199,9 @@ func (ndr *SingleNodeDisruptionReconciler) TryTransitionState(ctx context.Contex
 			return err
 		}
 		if ndr.NodeDisruption.Status.State == nodedisruptionv1alpha1.Granted {
-			NodeDisruptionGrantedTotal.WithLabelValues().Inc()
+			NodeDisruptionGrantedTotal.WithLabelValues(ndr.NodeDisruption.Spec.Type).Inc()
 		} else if ndr.NodeDisruption.Status.State == nodedisruptionv1alpha1.Rejected {
-			NodeDisruptionRejectedTotal.WithLabelValues().Inc()
+			NodeDisruptionRejectedTotal.WithLabelValues(ndr.NodeDisruption.Spec.Type).Inc()
 		}
 	}
 	// If the disruption is not Pending nor unknown, the state is final
@@ -329,6 +333,15 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 	if ndr.Config.RejectOverlappingDisruption {
 		anyFailed, status, err := ndr.ValidateOverlappingDisruption(ctx, disruptedNodes)
 		return anyFailed, []nodedisruptionv1alpha1.DisruptedBudgetStatus{status}, err
+	}
+
+	if len(ndr.Config.NodeDisruptionTypes) != 0 && !slices.Contains(ndr.Config.NodeDisruptionTypes, ndr.NodeDisruption.Spec.Type) {
+		status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: ndr.getNodeDisruptionReference(),
+			Reason:    "Type provided of node disruption is not managed",
+			Ok:        false,
+		}
+		return true, []nodedisruptionv1alpha1.DisruptedBudgetStatus{status}, nil
 	}
 
 	return false, statuses, nil
