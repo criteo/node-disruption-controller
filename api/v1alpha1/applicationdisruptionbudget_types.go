@@ -43,6 +43,16 @@ type ApplicationDisruptionBudgetSpec struct {
 	// Maintenance will proceed only if the endpoint responds 2XX.
 	// +kubebuilder:validation:Optional
 	HealthHook HealthHookSpec `json:"healthHook,omitempty"`
+	// Define the freeze status of the budget. Frozen budget reject all disruptions ignoring any other constraints
+	Freeze FreezeSpec `json:"freeze,omitempty"`
+}
+
+// FreezeSpec defines the freeze status of the budget
+type FreezeSpec struct {
+	// Freeze the budget to prevent any disruptions
+	Enabled bool `json:"enabled,omitempty"`
+	// Reason of the freeze
+	Reason string `json:"reason,omitempty"`
 }
 
 type HealthHookSpec struct {

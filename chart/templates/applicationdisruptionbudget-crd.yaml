@@ -54,6 +54,17 @@ spec:
             description: ApplicationDisruptionBudgetSpec defines the desired state of
               ApplicationDisruptionBudget
             properties:
+              freeze:
+                description: Define the freeze status of the budget. Frozen budget reject
+                  all disruptions ignoring any other constraints
+                properties:
+                  enabled:
+                    description: Freeze the budget to prevent any disruptions
+                    type: boolean
+                  reason:
+                    description: Reason of the freeze
+                    type: string
+                type: object
               healthHook:
                 description: |-
                   Define a optional hook to call when validating a NodeDisruption.

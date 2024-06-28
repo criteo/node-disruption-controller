@@ -162,7 +162,6 @@ In some cases, an application can be unhealthy even if all its pods are running.
 
 You can select Pods and/or PVCs.
 
-
 ##### PVC selector
 
 The main reason of using a PVC selector is to ensure that node that contains data don't enter maintenance
@@ -181,6 +180,11 @@ This has 2 purposes:
 The hook will be called with a POST method containing the JSON encoded NodeDisruption the controller is trying to validate.
 
 Note: It is not a replacement for readiness probes but a complement.
+
+##### Freeze
+
+Budgets support freezing disruptions. By setting `spec.Freeze.Enabled`, the budget will reject all disruptions and give the reason specified in `spec.Freeze.Reason`. 
+It is equivalent to setting 0 as the max disruptions but it provide better messages.
 
 #### Sample object
 

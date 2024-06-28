@@ -56,6 +56,17 @@ spec:
           spec:
             description: NodeDisruptionBudgetSpec defines the desired state of NodeDisruptionBudget
             properties:
+              freeze:
+                description: Define the freeze status of the budget. Frozen budget reject
+                  all disruptions ignoring any other constraints
+                properties:
+                  enabled:
+                    description: Freeze the budget to prevent any disruptions
+                    type: boolean
+                  reason:
+                    description: Reason of the freeze
+                    type: string
+                type: object
               maxDisruptedNodes:
                 description: A NodeDisruption is allowed if at most "maxDisruptedNodes"
                   nodes selected by selectors are unavailable after the disruption.

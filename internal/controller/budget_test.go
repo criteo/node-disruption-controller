@@ -31,14 +31,30 @@ func (m *MockBudget) IsImpacted(resolver.NodeSet) bool {
 }
 
 // Return the number of disruption allowed considering a list of current node disruptions
-func (m *MockBudget) TolerateDisruption(resolver.NodeSet) bool {
-	return m.tolerate
+func (m *MockBudget) TryValidateDisruptionFromBudgetConstraints(resolver.NodeSet) nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+		Reference: nodedisruptionv1alpha1.NamespacedName{},
+		Reason:    "foo",
+		Ok:        m.tolerate,
+	}
 }
 
 // Check health make a synchronous health check on the underlying resource of a budget
-func (m *MockBudget) CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption) error {
+func (m *MockBudget) TryValidateDisruptionFromHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption) nodedisruptionv1alpha1.DisruptedBudgetStatus {
 	m.healthChecked = true
-	return m.health
+	if m.health != nil {
+		return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: nodedisruptionv1alpha1.NamespacedName{},
+			Reason:    m.health.Error(),
+			Ok:        false,
+		}
+	} else {
+		return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: nodedisruptionv1alpha1.NamespacedName{},
+			Reason:    "",
+			Ok:        true,
+		}
+	}
 }
 
 // Apply the budget's status to Kubernetes
@@ -108,7 +124,6 @@ func TestValidationImpactedAllOk(t *testing.T) {
 	}
 
 	budgets := []controller.Budget{&budget1, &budget2}
-
 	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets)
 	assert.False(t, anyFailed)
 	assert.Equal(t, len(statuses), 2)

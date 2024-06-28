@@ -146,4 +146,11 @@ var (
 		},
 		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind", "node_disruption_name"},
 	)
+	DisruptionBudgetFrozen = promauto.With(metrics.Registry).NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: METIC_PREFIX + "budget_disruption_frozen",
+			Help: "Budget frozen",
+		},
+		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind"},
+	)
 )

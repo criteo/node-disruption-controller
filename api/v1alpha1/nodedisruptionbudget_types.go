@@ -37,6 +37,8 @@ type NodeDisruptionBudgetSpec struct {
 	MinUndisruptedNodes int `json:"minUndisruptedNodes"`
 	// NodeSelector query over pods whose nodes are managed by the disruption budget.
 	NodeSelector metav1.LabelSelector `json:"nodeSelector,omitempty"`
+	// Define the freeze status of the budget. Frozen budget reject all disruptions ignoring any other constraints
+	Freeze FreezeSpec `json:"freeze,omitempty"`
 }
 
 //+kubebuilder:object:root=true
