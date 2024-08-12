@@ -118,7 +118,7 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 					return createdADB.Status.WatchedNodes
 				}, timeout, interval).Should(Equal([]string{"node1"}))
 
-				By("Adding Pods")
+				By("Adding more Pods")
 				pod2 := newPod("podadb2", ADBNamespace, "node2", podLabels)
 				Expect(k8sClient.Create(ctx, &pod2)).Should(Succeed())
 
@@ -129,9 +129,10 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 					return createdADB.Status.WatchedNodes
 				}, timeout, interval).Should(Equal([]string{"node1", "node2"}))
 
-				By("Adding PVCs")
+				By("Adding a new PVC")
 				pvc3 := newPVC("pvc3", ADBNamespace, "node3-pv-local", podLabels)
-				Expect(k8sClient.Create(ctx, &pvc3)).Should(Succeed())
+				Expect(k8sClient.Create(ctx, pvc3.DeepCopy())).Should(Succeed())
+				Expect(k8sClient.Status().Update(ctx, pvc3.DeepCopy())).Should(Succeed())
 
 				By("checking the ApplicationDisruptionBudget updated the status")
 				Eventually(func() []string {
@@ -153,7 +154,8 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 				pod3 := newPod("podadb3", ADBNamespace, "", podLabels)
 				Expect(k8sClient.Create(ctx, &pod3)).Should(Succeed())
 				pvc3 := newPVC("pvc3", ADBNamespace, "node3-pv-local", podLabels)
-				Expect(k8sClient.Create(ctx, &pvc3)).Should(Succeed())
+				Expect(k8sClient.Create(ctx, pvc3.DeepCopy())).Should(Succeed())
+				Expect(k8sClient.Status().Update(ctx, pvc3.DeepCopy())).Should(Succeed())
 
 				By("creating a budget that accepts one disruption")
 				ndb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
@@ -232,7 +234,48 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 
 				By("Adding PVC")
 				pvc := newPVC("pvc", ADBNamespace, "remote-pv", podLabels)
-				Expect(k8sClient.Create(ctx, &pvc)).Should(Succeed())
+				Expect(k8sClient.Create(ctx, pvc.DeepCopy())).Should(Succeed())
+				Expect(k8sClient.Status().Update(ctx, pvc.DeepCopy())).Should(Succeed())
+
+				By("creating a budget that accepts one disruption")
+				adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "nodedisruption.criteo.com/v1alpha1",
+						Kind:       "ApplicationDisruptionBudget",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      ADBname,
+						Namespace: ADBNamespace,
+					},
+					Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+						PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+						PVCSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+						MaxDisruptions: 1,
+					},
+				}
+				Expect(k8sClient.Create(ctx, adb)).Should(Succeed())
+
+				By("checking the ApplicationDisruptionBudget updated the status and has seen no nodes")
+				Eventually(func() int {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Namespace: ADBNamespace,
+						Name:      ADBname,
+					}, adb)
+					Expect(err).Should(Succeed())
+					return adb.Status.DisruptionsAllowed
+				}, timeout, interval).Should(Equal(1))
+
+				Expect(adb.Status.WatchedNodes).Should(BeEmpty())
+			})
+		})
+
+		When("PVC is pending", func() {
+			It("is ignored by ADB", func() {
+				By("Adding PVC")
+				pvc := newPVC("pvc", ADBNamespace, "remote-pv", podLabels)
+				pvc.Status.Phase = corev1.ClaimPending
+				Expect(k8sClient.Create(ctx, pvc.DeepCopy())).Should(Succeed())
+				Expect(k8sClient.Status().Update(ctx, pvc.DeepCopy())).Should(Succeed())
 
 				By("creating a budget that accepts one disruption")
 				adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
@@ -266,5 +309,4 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 			})
 		})
 	})
-
 })

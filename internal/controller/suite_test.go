@@ -87,7 +87,9 @@ func newPVC(name, namespace, pvName string, labels map[string]string) corev1.Per
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources:   corev1.ResourceRequirements{Requests: resources},
 		},
-		Status: corev1.PersistentVolumeClaimStatus{},
+		Status: corev1.PersistentVolumeClaimStatus{
+			Phase: corev1.ClaimBound,
+		},
 	}
 }
 
