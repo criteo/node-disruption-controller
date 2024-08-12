@@ -75,7 +75,7 @@ test: manifests generate fmt vet envtest lint ## Run tests.
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
+build: manifests generate fmt vet gen-doc ## Build manager binary.
 	CGO_ENABLED=0 go build -o bin/manager cmd/main.go
 
 .PHONY: run

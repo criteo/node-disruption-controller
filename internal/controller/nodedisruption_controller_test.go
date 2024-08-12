@@ -373,6 +373,147 @@ var _ = Describe("NodeDisruption controller", func() {
 				})
 			})
 
+			When("there is a node disruption budget that is frozen", func() {
+				It("rejects the node disruption", func() {
+					By("creating a budget that accepts everything")
+					ndb := &nodedisruptionv1alpha1.NodeDisruptionBudget{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruptionBudget",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test",
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionBudgetSpec{
+							NodeSelector:      metav1.LabelSelector{MatchLabels: nodeLabels1},
+							MaxDisruptedNodes: 99,
+							Freeze: nodedisruptionv1alpha1.FreezeSpec{
+								Enabled: false,
+							},
+						},
+					}
+					Expect(k8sClient.Create(ctx, ndb.DeepCopy())).Should(Succeed())
+
+					By("creating a new NodeDisruption")
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruption",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      NDName,
+							Namespace: NDNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					By("checking the NodeDisruption is being granted")
+					createdDisruption := &nodedisruptionv1alpha1.NodeDisruption{}
+
+					Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+						err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+						if err != nil {
+							panic("should be able to get")
+						}
+						return createdDisruption.Status.State
+					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Granted))
+
+					By("creating a budget that accepts everything")
+					Expect(k8sClient.Delete(ctx, ndb)).Should(Succeed())
+					ndb.Spec.Freeze.Enabled = true
+					ndb.Spec.Freeze.Reason = "foobar"
+					Expect(k8sClient.Create(ctx, ndb)).Should(Succeed())
+
+					By("Re-creating a new NodeDisruption")
+					Expect(k8sClient.Delete(ctx, disruption)).Should(Succeed())
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					By("checking the NodeDisruption is being rejected")
+					Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+						err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+						if err != nil {
+							panic("should be able to get")
+						}
+						return createdDisruption.Status.State
+					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Rejected))
+
+					Expect(createdDisruption.Status.DisruptedDisruptionBudgets[0].Reason).Should(Equal("Budget frozen: foobar"))
+				})
+			})
+
+			When("there is a application disruption budget that is frozen", func() {
+				It("rejects the node disruption", func() {
+					By("creating a budget that accepts everything")
+					adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "ApplicationDisruptionBudget",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test",
+							Namespace: NDNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+							PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+							PVCSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+							MaxDisruptions: 1,
+						},
+					}
+					Expect(k8sClient.Create(ctx, adb.DeepCopy())).Should(Succeed())
+
+					By("creating a new NodeDisruption")
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruption",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      NDName,
+							Namespace: NDNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					By("checking the NodeDisruption is being granted")
+					createdDisruption := &nodedisruptionv1alpha1.NodeDisruption{}
+
+					Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+						err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+						if err != nil {
+							panic("should be able to get")
+						}
+						return createdDisruption.Status.State
+					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Granted))
+
+					By("creating a budget that accepts everything")
+					Expect(k8sClient.Delete(ctx, adb)).Should(Succeed())
+					adb.Spec.Freeze.Enabled = true
+					adb.Spec.Freeze.Reason = "foobar"
+					Expect(k8sClient.Create(ctx, adb)).Should(Succeed())
+
+					By("Re-creating a new NodeDisruption")
+					Expect(k8sClient.Delete(ctx, disruption)).Should(Succeed())
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					By("checking the NodeDisruption is being rejected")
+					Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+						err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+						if err != nil {
+							panic("should be able to get")
+						}
+						return createdDisruption.Status.State
+					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Rejected))
+
+					Expect(createdDisruption.Status.DisruptedDisruptionBudgets[0].Reason).Should(Equal("Budget frozen: foobar"))
+				})
+			})
+
 			When("there is a budget that doesn't support any disruption and retry is activated", func() {
 				It("rejects the node disruption", func() {
 					By("creating a budget that rejects everything")
@@ -529,7 +670,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							Name:      "test",
 							Kind:      "NodeDisruptionBudget",
 						},
-						Reason: "No more disruption allowed",
+						Reason: "Number of allowed disrupted nodes exceeded (Remaining disruptions allowed: 0, Number of current node disrupted: 0, Requested nodes to disrupt: 2)",
 						Ok:     false,
 					}}
 					Expect(disruption.Status.DisruptedDisruptionBudgets).Should(Equal(expectedStatus))
@@ -554,7 +695,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							Name:      "test",
 							Kind:      "NodeDisruptionBudget",
 						},
-						Reason: "No more disruption allowed",
+						Reason: "Number of allowed disrupted nodes exceeded (Remaining disruptions allowed: 0, Number of current node disrupted: 0, Requested nodes to disrupt: 2)",
 						Ok:     false,
 					}, {
 						Reference: nodedisruptionv1alpha1.NamespacedName{

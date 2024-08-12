@@ -115,6 +115,12 @@ func PruneADBMetrics(ref nodedisruptionv1alpha1.NamespacedName) {
 // UpdateADBMetrics update metrics for an ADB
 func UpdateADBMetrics(ref nodedisruptionv1alpha1.NamespacedName, adb *nodedisruptionv1alpha1.ApplicationDisruptionBudget) {
 	DisruptionBudgetMaxDisruptions.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(float64(adb.Spec.MaxDisruptions))
+	if adb.Spec.Freeze.Enabled {
+		DisruptionBudgetFrozen.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(1)
+	} else {
+		DisruptionBudgetFrozen.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(0)
+	}
+
 	UpdateBudgetStatusMetrics(ref, adb.Status)
 }
 
@@ -199,8 +205,29 @@ func (r *ApplicationDisruptionBudgetResolver) IsImpacted(disruptedNodes resolver
 }
 
 // Return the number of disruption allowed considering a list of current node disruptions
-func (r *ApplicationDisruptionBudgetResolver) TolerateDisruption(_ resolver.NodeSet) bool {
-	return r.ApplicationDisruptionBudget.Status.DisruptionsAllowed-1 >= 0
+func (r *ApplicationDisruptionBudgetResolver) TryValidateDisruptionFromBudgetConstraints(_ resolver.NodeSet) nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	if r.ApplicationDisruptionBudget.Spec.Freeze.Enabled {
+		return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: r.GetNamespacedName(),
+			Reason:    fmt.Sprintf("Budget frozen: %s", r.ApplicationDisruptionBudget.Spec.Freeze.Reason),
+			Ok:        false,
+		}
+	}
+
+	if r.ApplicationDisruptionBudget.Status.DisruptionsAllowed-1 >= 0 {
+		return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: r.GetNamespacedName(),
+			Reason:    "",
+			Ok:        true,
+		}
+	} else {
+		return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: r.GetNamespacedName(),
+			Reason: fmt.Sprintf("Number of allowed disruption exceeded (Remaining allowed disruptions: %d, current disruptions: %d)",
+				r.ApplicationDisruptionBudget.Status.DisruptionsAllowed, r.ApplicationDisruptionBudget.Status.CurrentDisruptions),
+			Ok: false,
+		}
+	}
 }
 
 func (r *ApplicationDisruptionBudgetResolver) UpdateStatus(ctx context.Context) error {
@@ -215,8 +242,24 @@ func (r *ApplicationDisruptionBudgetResolver) GetNamespacedName() nodedisruption
 	}
 }
 
+func (r *ApplicationDisruptionBudgetResolver) TryValidateDisruptionFromHealthHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption) nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	err := r.callHealthHook(ctx, nd)
+	if err != nil {
+		return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: r.GetNamespacedName(),
+			Reason:    fmt.Sprintf("Failed to validate with healthHook: %s", err),
+			Ok:        false,
+		}
+	}
+	return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+		Reference: r.GetNamespacedName(),
+		Reason:    "",
+		Ok:        true,
+	}
+}
+
 // Call a lifecycle hook in order to synchronously validate a Node Disruption
-func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption) error {
+func (r *ApplicationDisruptionBudgetResolver) callHealthHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption) error {
 	if r.ApplicationDisruptionBudget.Spec.HealthHook.URL == "" {
 		return nil
 	}
@@ -226,7 +269,7 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 
 	data, err := json.Marshal(nd)
 	if err != nil {
-		return err
+		return fmt.Errorf("controller error: Failed to serialize node disruption: %w", err)
 	}
 
 	namespacedName := r.GetNamespacedName()
@@ -234,7 +277,7 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.ApplicationDisruptionBudget.Spec.HealthHook.URL, bytes.NewReader(data))
 	if err != nil {
 		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(namespacedName.Namespace, namespacedName.Name, namespacedName.Kind).Inc()
-		return err
+		return fmt.Errorf("controller error: Error while building request: %w", err)
 	}
 
 	headers["Content-Type"] = []string{"application/json"}
@@ -244,13 +287,13 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 	resp, err := client.Do(req)
 	if err != nil {
 		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(namespacedName.Namespace, namespacedName.Name, namespacedName.Kind).Inc()
-		return err
+		return fmt.Errorf("error while performing request on healthHook: %w", err)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		DisruptionBudgetCheckHealthHookErrorTotal.WithLabelValues(namespacedName.Namespace, namespacedName.Name, namespacedName.Kind).Inc()
-		return err
+		return fmt.Errorf("error while reading response fron healthHook: %w", err)
 	}
 
 	DisruptionBudgetCheckHealthHookStatusCodeTotal.WithLabelValues(namespacedName.Namespace, namespacedName.Name, namespacedName.Kind, strconv.Itoa(resp.StatusCode)).Inc()
@@ -258,7 +301,7 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
 	}
-	return fmt.Errorf("http server responded with non 2XX status code: %s", string(body))
+	return fmt.Errorf("HealthHook responded with non 2XX status code: %s", string(body))
 }
 
 func (r *ApplicationDisruptionBudgetResolver) GetSelectedNodes(ctx context.Context) (resolver.NodeSet, error) {
