@@ -165,7 +165,19 @@ func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSel
 	PVsToFetch := []string{}
 
 	for _, pvc := range PVCs.Items {
-		PVsToFetch = append(PVsToFetch, pvc.Spec.VolumeName)
+
+		logger.Info("PVC status", "pvc_name", pvc.Name, "pvc_phase", pvc.Status.Phase)
+		if pvc.Status.Phase == corev1.ClaimBound {
+			PVsToFetch = append(PVsToFetch, pvc.Spec.VolumeName)
+		} else if pvc.Status.Phase == corev1.ClaimLost {
+			return nodeSet, fmt.Errorf("PVC %s is marked lost. It is unsafe to grant disruption in this state", pvc.Name)
+		} else if pvc.Status.Phase == corev1.ClaimPending {
+			// Pending means that no nodes around bound yet so no need to fetch a non existing pv
+			logger.Info("Skipping PVC because it is pending", "pvc_name", pvc.Name, "pvc_phase", pvc.Status.Phase)
+			continue
+		} else {
+			return nodeSet, fmt.Errorf("PVC %s is unexpected phase (%s). It is unsafe to grant disruption in this state", pvc.Name, pvc.Status.Phase)
+		}
 	}
 
 	getOptions := []client.GetOption{}
