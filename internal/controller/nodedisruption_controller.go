@@ -222,6 +222,7 @@ func (ndr *SingleNodeDisruptionReconciler) getRetryDate() metav1.Time {
 // tryTransitionToGranted attempt to transition to the granted state but can result in either pending or rejected
 func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Context) (err error) {
 	nextRetryDate := ndr.getRetryDate()
+	logger := log.FromContext(ctx)
 
 	var state nodedisruptionv1alpha1.NodeDisruptionState
 
@@ -245,6 +246,11 @@ func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Co
 		if !nextRetryDate.IsZero() {
 			state = nodedisruptionv1alpha1.Pending
 		} else {
+			for _, status := range statuses {
+				if !status.Ok {
+					logger.Info("Disruption rejected", "status", status)
+				}
+			}
 			state = nodedisruptionv1alpha1.Rejected
 		}
 	}
@@ -314,7 +320,7 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 	if ndr.NodeDisruption.Spec.Retry.IsAfterDeadline() {
 		status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
 			Reference: ndr.getNodeDisruptionReference(),
-			Reason:    "Deadline exceeded",
+			Reason:    fmt.Sprintf("Failed to grant maintenance before deadline (deadline: %s)", ndr.NodeDisruption.Spec.Retry.Deadline),
 			Ok:        false,
 		}
 		// Conserve the statuses of the previous iteration to conserve the reason of rejection
@@ -338,7 +344,7 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 	if len(ndr.Config.NodeDisruptionTypes) != 0 && !slices.Contains(ndr.Config.NodeDisruptionTypes, ndr.NodeDisruption.Spec.Type) {
 		status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
 			Reference: ndr.getNodeDisruptionReference(),
-			Reason:    "Type provided of node disruption is not managed",
+			Reason:    fmt.Sprintf("Type of node disruption provided is not allowed (supported: %s) (see --node-disruption-types on the controller)", ndr.Config.NodeDisruptionTypes),
 			Ok:        false,
 		}
 		return true, []nodedisruptionv1alpha1.DisruptedBudgetStatus{status}, nil
@@ -350,7 +356,6 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 // ValidateBudgetConstraints check that the Node Disruption is valid against the budgets defined in the cluster
 func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx context.Context, budgets []Budget) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
 	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
-	logger := log.FromContext(ctx)
 	anyFailed = false
 
 	impactedBudgets := []Budget{}
@@ -368,7 +373,6 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 				Ok:        false,
 			}
 			statuses = append(statuses, status)
-			logger.Info("Disruption rejected because: ", "status", status)
 			DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
 			break
 		}
@@ -390,7 +394,6 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 				Ok:        false,
 			}
 			statuses = append(statuses, status)
-			logger.Info("Disruption rejected because: ", "status", status)
 			DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
 			break
 		}

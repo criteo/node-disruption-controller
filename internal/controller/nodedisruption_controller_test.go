@@ -562,7 +562,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							Name:      "test-nodedisruption",
 							Kind:      "NodeDisruption",
 						},
-						Reason: "Deadline exceeded",
+						Reason: fmt.Sprintf("Failed to grant maintenance before deadline (deadline: %s)", disruption.Spec.Retry.Deadline),
 						Ok:     false,
 					}}
 					Expect(disruption.Status.DisruptedDisruptionBudgets).Should(Equal(expectedStatus))
