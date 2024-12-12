@@ -186,7 +186,7 @@ func (ndr *SingleNodeDisruptionReconciler) Reconcile(ctx context.Context) (err e
 func (ndr *SingleNodeDisruptionReconciler) TryTransitionState(ctx context.Context) (err error) {
 	logger := log.FromContext(ctx)
 	// If the state is unknown, switch it to Pending
-	if ndr.NodeDisruption.Status.State == "" {
+	if ndr.NodeDisruption.Status.State == nodedisruptionv1alpha1.Unknown {
 		ndr.NodeDisruption.Status.State = nodedisruptionv1alpha1.Pending
 
 		return err

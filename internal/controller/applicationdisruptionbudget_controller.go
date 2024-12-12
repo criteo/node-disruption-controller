@@ -294,6 +294,11 @@ func (r *ApplicationDisruptionBudgetResolver) ResolveDisruption(ctx context.Cont
 	}
 
 	for _, nd := range nodeDisruptions.Items {
+		if nd.Status.State == nodedisruptionv1alpha1.Unknown {
+			// node disruption has just been created and hasn't been reconciliated yet
+			continue
+		}
+
 		impactedNodes, err := r.Resolver.GetNodeFromNodeSelector(ctx, nd.Spec.NodeSelector)
 		if err != nil {
 			return 0, disruptions, err
