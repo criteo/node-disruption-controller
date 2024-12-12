@@ -36,6 +36,7 @@ type NamespacedName struct {
 type NodeDisruptionState string
 
 const (
+	Unknown  NodeDisruptionState = ""
 	Pending  NodeDisruptionState = "pending"
 	Granted  NodeDisruptionState = "granted"
 	Rejected NodeDisruptionState = "rejected"
