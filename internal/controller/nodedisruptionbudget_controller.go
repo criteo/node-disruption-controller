@@ -20,6 +20,7 @@ import (
 	"context"
 	"math"
 	"reflect"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -197,7 +198,7 @@ func (r *NodeDisruptionBudgetResolver) TolerateDisruption(disruptedNodes resolve
 }
 
 // Call a lifecycle hook in order to synchronously validate a Node Disruption
-func (r *NodeDisruptionBudgetResolver) CallHealthHook(_ context.Context, _ nodedisruptionv1alpha1.NodeDisruption) error {
+func (r *NodeDisruptionBudgetResolver) CallHealthHook(_ context.Context, _ nodedisruptionv1alpha1.NodeDisruption, _ time.Duration) error {
 	return nil
 }
 

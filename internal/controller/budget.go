@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
@@ -17,7 +18,7 @@ type Budget interface {
 	// Return the number of disruption allowed considering a list of current node disruptions
 	TolerateDisruption(resolver.NodeSet) bool
 	// Call a lifecycle hook in order to synchronously validate a Node Disruption
-	CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption) error
+	CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error
 	// Apply the budget's status to Kubernetes
 	UpdateStatus(context.Context) error
 	// Get the name, namespace and kind of bduget

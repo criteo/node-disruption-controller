@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/internal/controller"
@@ -36,7 +37,7 @@ func (m *MockBudget) TolerateDisruption(resolver.NodeSet) bool {
 }
 
 // Check health make a synchronous health check on the underlying resource of a budget
-func (m *MockBudget) CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption) error {
+func (m *MockBudget) CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error {
 	m.healthChecked = true
 	return m.health
 }
