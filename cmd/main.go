@@ -57,6 +57,7 @@ func main() {
 	var rejectEmptyNodeDisruption bool
 	var retryInterval time.Duration
 	var rejectOverlappingDisruption bool
+	var healthHookTimeout time.Duration
 	var nodeDisruptionTypesRaw string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -66,6 +67,7 @@ func main() {
 	flag.BoolVar(&rejectEmptyNodeDisruption, "reject-empty-node-disruption", false, "Reject NodeDisruption matching no actual node.")
 	flag.DurationVar(&retryInterval, "retry-interval", controller.DefaultRetryInterval, "How long to wait between each retry (Default 60s)")
 	flag.BoolVar(&rejectOverlappingDisruption, "reject-overlapping-disruption", false, "Automatically reject any overlapping NodeDisruption (based on node selector), preserving the oldest one")
+	flag.DurationVar(&healthHookTimeout, "healthhook-timeout", controller.DefaultHealthHookTimeout, "HTTP client timeout for calling HealthHook resolved from ADB")
 	flag.StringVar(&nodeDisruptionTypesRaw, "node-disruption-types", "", "The list of types allowed for a node disruption separated by a comma.")
 
 	opts := zap.Options{
@@ -109,6 +111,7 @@ func main() {
 			RejectEmptyNodeDisruption:   rejectEmptyNodeDisruption,
 			RetryInterval:               retryInterval,
 			RejectOverlappingDisruption: rejectOverlappingDisruption,
+			HealthHookTimeout:           healthHookTimeout,
 			NodeDisruptionTypes:         nodeDisruptionTypes,
 		},
 	}).SetupWithManager(mgr); err != nil {

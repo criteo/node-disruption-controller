@@ -36,7 +36,8 @@ import (
 )
 
 const (
-	DefaultRetryInterval = time.Minute
+	DefaultRetryInterval     = time.Minute
+	DefaultHealthHookTimeout = time.Minute
 )
 
 type NodeDisruptionReconcilerConfig struct {
@@ -46,6 +47,8 @@ type NodeDisruptionReconcilerConfig struct {
 	RetryInterval time.Duration
 	// Reject NodeDisruption if its node selector overlaps an older NodeDisruption's selector
 	RejectOverlappingDisruption bool
+	// HealthHook http call resolved from ADB need a timeout to avoid unresponsive call
+	HealthHookTimeout time.Duration
 	// Specify which node disruption types are allowed to be granted
 	NodeDisruptionTypes []string
 }
@@ -384,7 +387,7 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 	}
 
 	for _, budget := range impactedBudgets {
-		err := budget.CallHealthHook(ctx, ndr.NodeDisruption)
+		err := budget.CallHealthHook(ctx, ndr.NodeDisruption, ndr.Config.HealthHookTimeout)
 		ref := budget.GetNamespacedName()
 		if err != nil {
 			anyFailed = true

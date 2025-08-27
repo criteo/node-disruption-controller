@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -216,12 +217,12 @@ func (r *ApplicationDisruptionBudgetResolver) GetNamespacedName() nodedisruption
 }
 
 // Call a lifecycle hook in order to synchronously validate a Node Disruption
-func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption) error {
+func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
 	if r.ApplicationDisruptionBudget.Spec.HealthHook.URL == "" {
 		return nil
 	}
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: timeout} // Last resort, in case an external service is unresponsive.
 	headers := make(map[string][]string, 1)
 
 	data, err := json.Marshal(nd)
