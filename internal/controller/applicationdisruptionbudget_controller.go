@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -221,7 +222,7 @@ func (r *ApplicationDisruptionBudgetResolver) CallHealthHook(ctx context.Context
 		return nil
 	}
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second} // Last resort, in case an external service is unresponsive.
 	headers := make(map[string][]string, 1)
 
 	data, err := json.Marshal(nd)
