@@ -27,22 +27,22 @@ import (
 	"strconv"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-
+	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
+	"github.com/criteo/node-disruption-controller/pkg/resolver"
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
-	"github.com/criteo/node-disruption-controller/pkg/resolver"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // ApplicationDisruptionBudgetReconciler reconciles a ApplicationDisruptionBudget object
@@ -69,7 +69,7 @@ type ApplicationDisruptionBudgetReconciler struct {
 func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
-	err := r.Client.Get(ctx, req.NamespacedName, adb)
+	err := r.Get(ctx, req.NamespacedName, adb)
 	ref := nodedisruptionv1alpha1.NamespacedName{
 		Namespace: req.Namespace,
 		Name:      req.Name,
@@ -125,7 +125,7 @@ func (r *ApplicationDisruptionBudgetReconciler) MapFuncBuilder() handler.MapFunc
 	// Look for all ADBs in the namespace, then see if they match the object
 	return func(ctx context.Context, object client.Object) (requests []reconcile.Request) {
 		adbs := nodedisruptionv1alpha1.ApplicationDisruptionBudgetList{}
-		err := r.Client.List(ctx, &adbs, &client.ListOptions{Namespace: object.GetNamespace()})
+		err := r.List(ctx, &adbs, &client.ListOptions{Namespace: object.GetNamespace()})
 		if err != nil {
 			// We cannot return an error so at least it should be logged
 			logger := log.FromContext(context.Background())
@@ -150,6 +150,7 @@ func (r *ApplicationDisruptionBudgetReconciler) MapFuncBuilder() handler.MapFunc
 // SetupWithManager sets up the controller with the Manager.
 func (r *ApplicationDisruptionBudgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(controller.TypedOptions[reconcile.Request]{SkipNameValidation: ptr.To(true)}). // TODO(j.clerc): refactor tests to avoid skipping name validation
 		For(&nodedisruptionv1alpha1.ApplicationDisruptionBudget{}).
 		Watches(
 			&corev1.Pod{},

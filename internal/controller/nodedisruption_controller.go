@@ -24,15 +24,19 @@ import (
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/ptr"
 	"k8s.io/utils/strings/slices"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
@@ -75,11 +79,11 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	clusterResult := ctrl.Result{}
 
 	nd := &nodedisruptionv1alpha1.NodeDisruption{}
-	err := r.Client.Get(ctx, req.NamespacedName, nd)
+	err := r.Get(ctx, req.NamespacedName, nd)
 
 	if err != nil {
 		if errors.IsNotFound(err) {
-			PruneNodeDisruptionMetrics(req.NamespacedName.Name)
+			PruneNodeDisruptionMetrics(req.Name)
 			// If the ressource was not found, nothing has to be done
 			return clusterResult, nil
 		}
@@ -128,17 +132,18 @@ func PruneNodeDisruptionMetrics(nd_name string) {
 // UpdateNodeDisruptionMetrics update metrics for a Node Disruption
 func UpdateNodeDisruptionMetrics(nd *nodedisruptionv1alpha1.NodeDisruption) {
 	nd_state := 0
-	if nd.Status.State == nodedisruptionv1alpha1.Pending {
+	switch nd.Status.State {
+	case nodedisruptionv1alpha1.Pending:
 		nd_state = 0
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending), nd.Spec.Type).Set(1)
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted), nd.Spec.Type).Set(0)
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected), nd.Spec.Type).Set(0)
-	} else if nd.Status.State == nodedisruptionv1alpha1.Rejected {
+	case nodedisruptionv1alpha1.Rejected:
 		nd_state = -1
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending), nd.Spec.Type).Set(0)
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected), nd.Spec.Type).Set(1)
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted), nd.Spec.Type).Set(0)
-	} else if nd.Status.State == nodedisruptionv1alpha1.Granted {
+	case nodedisruptionv1alpha1.Granted:
 		nd_state = 1
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending), nd.Spec.Type).Set(0)
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected), nd.Spec.Type).Set(0)
@@ -164,6 +169,7 @@ func (r *NodeDisruptionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Recorder = mgr.GetEventRecorderFor("node-disruption-controller")
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nodedisruptionv1alpha1.NodeDisruption{}).
+		WithOptions(controller.TypedOptions[reconcile.Request]{SkipNameValidation: ptr.To(true)}). // TODO(j.clerc): refactor tests to avoid skipping name validation
 		Complete(r)
 }
 
@@ -201,9 +207,10 @@ func (ndr *SingleNodeDisruptionReconciler) TryTransitionState(ctx context.Contex
 		if err != nil {
 			return err
 		}
-		if ndr.NodeDisruption.Status.State == nodedisruptionv1alpha1.Granted {
+		switch ndr.NodeDisruption.Status.State {
+		case nodedisruptionv1alpha1.Granted:
 			NodeDisruptionGrantedTotal.WithLabelValues(ndr.NodeDisruption.Spec.Type).Inc()
-		} else if ndr.NodeDisruption.Status.State == nodedisruptionv1alpha1.Rejected {
+		case nodedisruptionv1alpha1.Rejected:
 			NodeDisruptionRejectedTotal.WithLabelValues(ndr.NodeDisruption.Spec.Type).Inc()
 		}
 	}

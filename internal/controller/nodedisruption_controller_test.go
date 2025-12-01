@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"time"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
@@ -61,9 +62,7 @@ func clearAllNodeDisruptionResources() {
 
 func startReconcilerWithConfig(config NodeDisruptionReconcilerConfig) context.CancelFunc {
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
-		MetricsBindAddress: "127.0.0.1:8081",
-		PprofBindAddress:   "127.0.0.1:8082",
-		Scheme:             scheme.Scheme,
+		Scheme: scheme.Scheme,
 	})
 	Expect(err).ToNot(HaveOccurred())
 	err = (&NodeDisruptionReconciler{
@@ -101,15 +100,11 @@ func startReconcilerWithConfig(config NodeDisruptionReconcilerConfig) context.Ca
 	}
 }
 
-func startDummyHTTPServer(handle http.HandlerFunc, listenAddr string) (cancelFn func()) {
-	testServer := http.NewServeMux()
-	srv := &http.Server{Addr: listenAddr, Handler: testServer}
-	testServer.HandleFunc("/", handle)
-	go func() {
-		defer GinkgoRecover()
-		_ = srv.ListenAndServe()
-	}()
-	return func() { _ = srv.Shutdown(context.Background()) }
+func startDummyHTTPServer(handle http.HandlerFunc) (baseURL string, cancelFn func()) {
+	m := http.NewServeMux()
+	m.HandleFunc("/", handle)
+	srv := httptest.NewServer(m)
+	return srv.URL, func() { srv.Close() }
 }
 
 func createNodeDisruption(name string, namespace string, nodeSelectorLabel map[string]string, disruptionType string, ctx context.Context) {
@@ -233,7 +228,6 @@ var _ = Describe("NodeDisruption controller", func() {
 
 			When("there are no budgets in the cluster", func() {
 				It("calls the lifecycle hook", func() {
-					mockHost := "localhost:8120"
 					mockURL := "/testurl"
 
 					By("Starting an http server to receive the hook")
@@ -250,11 +244,11 @@ var _ = Describe("NodeDisruption controller", func() {
 						hookURL = req.URL.String()
 						hookCallCount++
 						// Validate that the hook is called with valid headers
-						Expect(req.Header["Content-Type"][0]).Should(Equal("application/json"))
+						Expect(req.Header.Get("Content-Type")).Should(Equal("application/json"))
 						w.WriteHeader(http.StatusOK)
 					}
 
-					httpCancel := startDummyHTTPServer(checkHookFn, mockHost)
+					mockHost, httpCancel := startDummyHTTPServer(checkHookFn)
 					defer httpCancel()
 
 					By("creating a budget that accepts one disruption")
@@ -271,7 +265,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
 							MaxDisruptions: 1,
 							HealthHook: nodedisruptionv1alpha1.HealthHookSpec{
-								URL: fmt.Sprintf("http://%s%s", mockHost, mockURL),
+								URL: mockHost + mockURL,
 							},
 						},
 					}
