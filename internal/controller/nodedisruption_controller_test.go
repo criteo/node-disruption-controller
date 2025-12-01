@@ -264,7 +264,7 @@ var _ = Describe("NodeDisruption controller", func() {
 						Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
 							PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
 							MaxDisruptions: 1,
-							HealthHook: nodedisruptionv1alpha1.HealthHookSpec{
+							HealthHook: nodedisruptionv1alpha1.HookSpec{
 								URL: mockHost + mockURL,
 							},
 						},
