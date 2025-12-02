@@ -3,6 +3,10 @@ module github.com/criteo/node-disruption-controller
 go 1.25.4
 
 require (
+	github.com/go-openapi/errors v0.22.4
+	github.com/go-openapi/runtime v0.29.2
+	github.com/go-openapi/strfmt v0.25.0
+	github.com/go-openapi/validate v0.25.1
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
 	github.com/stretchr/testify v1.11.1
@@ -15,6 +19,10 @@ require (
 require (
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/go-openapi/analysis v0.24.1 // indirect
+	github.com/go-openapi/loads v0.23.2 // indirect
+	github.com/go-openapi/spec v0.22.1 // indirect
 	github.com/go-openapi/swag/cmdutils v0.25.4 // indirect
 	github.com/go-openapi/swag/conv v0.25.4 // indirect
 	github.com/go-openapi/swag/fileutils v0.25.4 // indirect
@@ -27,10 +35,17 @@ require (
 	github.com/go-openapi/swag/typeutils v0.25.4 // indirect
 	github.com/go-openapi/swag/yamlutils v0.25.4 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
+	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	go.mongodb.org/mongo-driver v1.17.6 // indirect
+	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
+	go.opentelemetry.io/otel v1.38.0 // indirect
+	go.opentelemetry.io/otel/metric v1.38.0 // indirect
+	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/sync v0.18.0 // indirect
@@ -50,7 +65,7 @@ require (
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.22.3 // indirect
 	github.com/go-openapi/jsonreference v0.21.3 // indirect
-	github.com/go-openapi/swag v0.25.4 // indirect
+	github.com/go-openapi/swag v0.25.4
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
 	github.com/google/go-cmp v0.7.0 // indirect

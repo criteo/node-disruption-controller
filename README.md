@@ -328,6 +328,22 @@ UnDeploy the controller from the cluster:
 make undeploy
 ```
 
+## Application manager client
+
+
+Install the swagger code generator
+
+```sh
+CGO_ENABLED=0 go install github.com/go-swagger/go-swagger/cmd/swagger@latest
+```
+
+Regenerate the client code
+
+```sh
+cd ./internal
+swagger generate client --spec ../app_manager_openapi.yml -m appmgr -c appmgrcli
+```
+
 ## Contributing
 // TODO(user): Add detailed information on how you would like others to contribute to this project
 
