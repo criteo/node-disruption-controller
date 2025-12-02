@@ -124,6 +124,8 @@ spec:
                   properties:
                     ok:
                       type: boolean
+                    preparing:
+                      type: boolean
                     reason:
                       type: string
                     reference:
@@ -143,6 +145,7 @@ spec:
                       type: object
                   required:
                   - ok
+                  - preparing
                   - reason
                   type: object
                 type: array

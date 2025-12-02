@@ -200,6 +200,22 @@ func (r *NodeDisruptionBudgetResolver) TolerateDisruption(disruptedNodes resolve
 	return r.NodeDisruptionBudget.Status.DisruptionsAllowed-disruptedNodesCount >= 0
 }
 
+func (r *NodeDisruptionBudgetResolver) V2HooksReady() bool {
+	return false
+}
+
+func (r *NodeDisruptionBudgetResolver) CallPrepareHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+	return nil
+}
+
+func (r *NodeDisruptionBudgetResolver) CallReadyHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+	return nil
+}
+
+func (r *NodeDisruptionBudgetResolver) CallCancelHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+	return nil
+}
+
 // Call a lifecycle hook in order to synchronously validate a Node Disruption
 func (r *NodeDisruptionBudgetResolver) CallHealthHook(_ context.Context, _ nodedisruptionv1alpha1.NodeDisruption, _ time.Duration) error {
 	return nil

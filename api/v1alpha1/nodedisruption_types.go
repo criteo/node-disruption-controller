@@ -101,6 +101,7 @@ type NodeDisruptionStatus struct {
 type DisruptedBudgetStatus struct {
 	Reference NamespacedName `json:"reference,omitempty"`
 	Reason    string         `json:"reason"`
+	Preparing bool           `json:"preparing"`
 	Ok        bool           `json:"ok"`
 }
 

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
+	"github.com/criteo/node-disruption-controller/internal/appmgr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -100,11 +101,11 @@ func startReconcilerWithConfig(config NodeDisruptionReconcilerConfig) context.Ca
 	}
 }
 
-func startDummyHTTPServer(handle http.HandlerFunc) (baseURL string, cancelFn func()) {
+func startDummyHTTPServer(handle http.HandlerFunc) *httptest.Server {
 	m := http.NewServeMux()
 	m.HandleFunc("/", handle)
 	srv := httptest.NewServer(m)
-	return srv.URL, func() { srv.Close() }
+	return srv
 }
 
 func createNodeDisruption(name string, namespace string, nodeSelectorLabel map[string]string, disruptionType string, ctx context.Context) {
@@ -226,9 +227,106 @@ var _ = Describe("NodeDisruption controller", func() {
 				})
 			})
 
+			When("using v2 hook workflow", func() {
+				It("calls the prepare and ready hooks before granting disruption", func() {
+					mockBasePath := "/api/v2"
+
+					dis := appmgr.Disruption{}
+					By("Starting an http server to receive the hook")
+					prepareCalledCnt := 0
+					readyCalledCnt := 0
+					cancelCalledCnt := 0
+
+					checkHookFn := func(w http.ResponseWriter, req *http.Request) {
+						switch req.URL.Path {
+						case mockBasePath + "/prepare":
+							prepareCalledCnt++
+						case mockBasePath + "/ready":
+							readyCalledCnt++
+						case mockBasePath + "/cancel":
+							cancelCalledCnt++
+						}
+						err := json.NewDecoder(req.Body).Decode(&dis)
+						Expect(err).Should(Succeed())
+						// Validate that the hook is called with valid headers
+						Expect(req.Header.Get("Content-Type")).Should(Equal("application/json"))
+						w.WriteHeader(http.StatusOK)
+					}
+
+					mockServer := startDummyHTTPServer(checkHookFn)
+					defer mockServer.Close()
+
+					By("creating a budget that accepts one disruption")
+					ndb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "ApplicationDisruptionBudget",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test",
+							Namespace: "default",
+						},
+						Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+							PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+							MaxDisruptions: 1,
+							HookV2BasePath: nodedisruptionv1alpha1.HookSpec{
+								URL: mockServer.URL + mockBasePath,
+							},
+						},
+					}
+					Expect(k8sClient.Create(ctx, ndb)).Should(Succeed())
+
+					By("checking the ApplicationDisruptionBudget in synchronized")
+					ADBLookupKey := types.NamespacedName{Name: "test", Namespace: "default"}
+					createdADB := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
+					Eventually(func() []string {
+						err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
+						Expect(err).Should(Succeed())
+						return createdADB.Status.WatchedNodes
+					}, timeout, interval).Should(Equal([]string{"node1"}))
+
+					By("creating a new NodeDisruption")
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruption",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      NDName,
+							Namespace: NDNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					NDLookupKey := types.NamespacedName{Name: NDName, Namespace: NDNamespace}
+					createdDisruption := &nodedisruptionv1alpha1.NodeDisruption{}
+
+					By("checking the NodeDisruption is being granted")
+					Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+						err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+						if err != nil {
+							panic("should be able to get")
+						}
+						return createdDisruption.Status.State
+					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Granted))
+
+					By("ensure the disrupted node selector is correct")
+					Expect(createdDisruption.Status.DisruptedNodes).Should(Equal([]string{"node1", "node2"}))
+
+					By("checking that the v2 hooks are properly called")
+					Expect(prepareCalledCnt).Should(Equal(1))
+					Expect(readyCalledCnt).Should(Equal(1))
+					Expect(cancelCalledCnt).Should(Equal(0))
+					Expect(dis.Name).Should(Equal(NDName))
+				})
+			})
+
 			When("there are no budgets in the cluster", func() {
 				It("calls the lifecycle hook", func() {
-					mockURL := "/testurl"
+					mockPath := "/testurl"
 
 					By("Starting an http server to receive the hook")
 					var (
@@ -248,8 +346,8 @@ var _ = Describe("NodeDisruption controller", func() {
 						w.WriteHeader(http.StatusOK)
 					}
 
-					mockHost, httpCancel := startDummyHTTPServer(checkHookFn)
-					defer httpCancel()
+					mockServer := startDummyHTTPServer(checkHookFn)
+					defer mockServer.Close()
 
 					By("creating a budget that accepts one disruption")
 					ndb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
@@ -265,7 +363,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
 							MaxDisruptions: 1,
 							HealthHook: nodedisruptionv1alpha1.HookSpec{
-								URL: mockHost + mockURL,
+								URL: mockServer.URL + mockPath,
 							},
 						},
 					}
@@ -313,7 +411,7 @@ var _ = Describe("NodeDisruption controller", func() {
 
 					By("checking that the lifecyclehook was properly called")
 					Expect(hookCallCount).Should(Equal(1))
-					Expect(hookURL).Should(Equal(mockURL))
+					Expect(hookURL).Should(Equal(mockPath))
 					HookDisruption := &nodedisruptionv1alpha1.NodeDisruption{}
 					Expect(json.Unmarshal(hookBody, HookDisruption)).Should(Succeed())
 					Expect(HookDisruption.Name).Should(Equal(disruption.Name))
