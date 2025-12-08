@@ -326,6 +326,8 @@ func (in *NodeDisruptionList) DeepCopyObject() runtime.Object {
 func (in *NodeDisruptionSpec) DeepCopyInto(out *NodeDisruptionSpec) {
 	*out = *in
 	in.NodeSelector.DeepCopyInto(&out.NodeSelector)
+	in.StartDate.DeepCopyInto(&out.StartDate)
+	out.Duration = in.Duration
 	in.Retry.DeepCopyInto(&out.Retry)
 }
 

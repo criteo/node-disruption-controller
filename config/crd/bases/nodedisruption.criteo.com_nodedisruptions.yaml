@@ -45,6 +45,9 @@ spec:
           spec:
             description: NodeDisruptionSpec defines the desired state of NodeDisruption
             properties:
+              duration:
+                description: Duration of the disruption once granted
+                type: string
               nodeSelector:
                 description: Label query over nodes that will be impacted by the disruption
                 properties:
@@ -92,7 +95,8 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               retry:
-                description: Configure the retrying behavior of a NodeDisruption
+                description: Retry configuration allows to retry a disruption after
+                  rejection until the given deadline
                 properties:
                   deadline:
                     description: Deadline after which the disruption is not retried
@@ -102,6 +106,10 @@ spec:
                     description: Enable retrying
                     type: boolean
                 type: object
+              startDate:
+                description: StartDate when the disruption should start
+                format: date-time
+                type: string
               type:
                 description: Type of the node disruption
                 type: string
