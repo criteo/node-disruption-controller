@@ -308,5 +308,79 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 				Expect(adb.Status.WatchedNodes).Should(BeEmpty())
 			})
 		})
+
+		When("PodSelector and PVCSelector are both empty", func() {
+			It("watches no nodes", func() {
+				By("creating a budget with empty selectors")
+				adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "nodedisruption.criteo.com/v1alpha1",
+						Kind:       "ApplicationDisruptionBudget",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      ADBname,
+						Namespace: ADBNamespace,
+					},
+					Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+						PodSelector:    metav1.LabelSelector{},
+						PVCSelector:    metav1.LabelSelector{},
+						MaxDisruptions: 1,
+					},
+				}
+				Expect(k8sClient.Create(ctx, adb)).Should(Succeed())
+
+			By("checking the ApplicationDisruptionBudget watches no nodes")
+			ADBLookupKey := types.NamespacedName{Name: ADBname, Namespace: ADBNamespace}
+			createdADB := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
+			Eventually(func() []string {
+				err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
+				Expect(err).Should(Succeed())
+				return createdADB.Status.WatchedNodes
+			}, timeout, interval).Should(BeEmpty())
+
+			By("verifying disruptions are still allowed")
+			Eventually(func() int {
+				err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
+				Expect(err).Should(Succeed())
+				return createdADB.Status.DisruptionsAllowed
+			}, timeout, interval).Should(Equal(1))
+			})
+		})
+
+		When("Only PodSelector is empty", func() {
+			It("only watches nodes from PVCs", func() {
+				By("Adding PVC")
+				pvc := newPVC("pvc-test", ADBNamespace, "node3-pv-local", podLabels)
+				Expect(k8sClient.Create(ctx, pvc.DeepCopy())).Should(Succeed())
+				Expect(k8sClient.Status().Update(ctx, pvc.DeepCopy())).Should(Succeed())
+
+				By("creating a budget with empty PodSelector but valid PVCSelector")
+				adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "nodedisruption.criteo.com/v1alpha1",
+						Kind:       "ApplicationDisruptionBudget",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      ADBname,
+						Namespace: ADBNamespace,
+					},
+					Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+						PodSelector:    metav1.LabelSelector{},
+						PVCSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+						MaxDisruptions: 1,
+					},
+				}
+				Expect(k8sClient.Create(ctx, adb)).Should(Succeed())
+
+				By("checking only PVC nodes are watched")
+				ADBLookupKey := types.NamespacedName{Name: ADBname, Namespace: ADBNamespace}
+				createdADB := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
+				Eventually(func() []string {
+					err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
+					Expect(err).Should(Succeed())
+					return createdADB.Status.WatchedNodes
+				}, timeout, interval).Should(Equal([]string{"node3"}))
+			})
+		})
 	})
 })

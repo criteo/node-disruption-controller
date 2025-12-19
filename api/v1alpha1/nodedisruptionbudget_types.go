@@ -63,6 +63,9 @@ func (adb *NodeDisruptionBudget) SelectorMatchesObject(object client.Object) boo
 	switch object.(type) {
 	case *corev1.Node:
 		selector, _ := metav1.LabelSelectorAsSelector(&adb.Spec.NodeSelector)
+		if selector.Empty() {
+			return false
+		}
 		return selector.Matches(objectLabelSet)
 	case *NodeDisruption:
 		// It is faster to trigger a reconcile for each ADB instead of checking if the

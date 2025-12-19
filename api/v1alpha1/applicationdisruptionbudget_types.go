@@ -105,9 +105,15 @@ func (adb *ApplicationDisruptionBudget) SelectorMatchesObject(object client.Obje
 	switch object.(type) {
 	case *corev1.Pod:
 		selector, _ := metav1.LabelSelectorAsSelector(&adb.Spec.PodSelector)
+		if selector.Empty() {
+			return false
+		}
 		return selector.Matches(objectLabelSet)
 	case *corev1.PersistentVolumeClaim:
 		selector, _ := metav1.LabelSelectorAsSelector(&adb.Spec.PVCSelector)
+		if selector.Empty() {
+			return false
+		}
 		return selector.Matches(objectLabelSet)
 	case *NodeDisruption:
 		// It is faster to trigger a reconcile for each ADB instead of checking if the

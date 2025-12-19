@@ -149,7 +149,7 @@ func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSel
 	nodeSet := NodeSet{Nodes: nodeNames}
 
 	selector, err := metav1.LabelSelectorAsSelector(&pvcSelector)
-	if err != nil {
+	if err != nil || selector.Empty() {
 		return nodeSet, err
 	}
 	opts := []client.ListOption{
