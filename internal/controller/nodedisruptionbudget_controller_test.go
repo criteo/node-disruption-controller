@@ -181,6 +181,44 @@ var _ = Describe("NodeDisruptionBudget controller", func() {
 				})
 			})
 
+			When("NodeSelector is empty", func() {
+				It("watches no nodes", func() {
+					By("creating a budget with empty NodeSelector")
+					ndb := &nodedisruptionv1alpha1.NodeDisruptionBudget{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruptionBudget",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      NDBname,
+							Namespace: NDBNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionBudgetSpec{
+							NodeSelector:        metav1.LabelSelector{},
+							MaxDisruptedNodes:   10,
+							MinUndisruptedNodes: 0,
+						},
+					}
+					Expect(k8sClient.Create(ctx, ndb)).Should(Succeed())
+
+				By("checking the NodeDisruptionBudget watches no nodes")
+				NDBLookupKey := types.NamespacedName{Name: NDBname, Namespace: NDBNamespace}
+				createdNDB := &nodedisruptionv1alpha1.NodeDisruptionBudget{}
+				Eventually(func() []string {
+					err := k8sClient.Get(ctx, NDBLookupKey, createdNDB)
+					Expect(err).Should(Succeed())
+					return createdNDB.Status.WatchedNodes
+				}, timeout, interval).Should(BeEmpty())
+
+				By("verifying disruptions calculation with no nodes")
+				Eventually(func() int {
+					err := k8sClient.Get(ctx, NDBLookupKey, createdNDB)
+					Expect(err).Should(Succeed())
+					return createdNDB.Status.DisruptionsAllowed
+				}, timeout, interval).Should(Equal(0))
+				})
+			})
+
 		})
 
 	})
