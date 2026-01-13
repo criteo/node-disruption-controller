@@ -1,0 +1,145 @@
+swagger: "2.0"
+info:
+  title: Swagger Node Distruption Client - OpenAPI 3.0
+  description: |-
+    API to be implemented in the application manager, i.e. the client side of the Node Distruption logic.
+  version: 1.0.0
+host: localhost
+schemes:
+  - https
+externalDocs:
+  description: Find out more about Node Disruption v2
+  url: https://github.com/criteo/node-disruption-controller
+securityDefinitions:
+  Bearer:
+    type: apiKey
+    name: Authorization
+    in: header
+    description: JWT Token
+security: []
+tags:
+  - name: disruption
+definitions:
+  Disruption:
+    description: Disprution describes a disruption of nodes by a given source.
+    type: object
+    properties:
+      uid:
+        type: string
+        description: Unique ID for this disruption
+        example: f45ac82c-7571-4770-8de1-dfdb0bf598de
+      name:
+        type: string
+        description: Human readable identifier of the disruption
+        example: hw-maint-123
+      type:
+        type: string
+        description: Type of disruption
+        example: decommission
+      nodes:
+        type: array
+        description: Nodes affected by this disruption
+        items:
+          type: string
+        example:
+          - hello.example.com
+      createdBy:
+        type: string
+        description: Source of the disruption
+        example: maintenance-manager
+      creationDate:
+        type: string
+        format: date-time
+        description: When the disruption was created
+      startDate:
+        type: string
+        format: date-time
+        description: Expected start date of the disruption
+      deadlineDate:
+        type: string
+        format: date-time
+        description: Start date + duration pre-calculated
+      duration:
+        type: integer
+        format: int64
+        example: 3600
+        description: For how long in seconds the disruption is expected to last after the start date.
+  Error:
+    description: Error details when available
+    type: string
+    example: "unable to contact internal tools"
+parameters:
+  disruptionParam:
+    in: body
+    name: body
+    description: Disruption
+    schema:
+      $ref: '#/definitions/Disruption'
+responses:
+  RetryAfter:
+    description: Cannot be processed right now, retry later / after Retry-After value
+    headers:
+      Retry-After:
+        description: Delay in seconds.
+        type: integer
+  UnexpectedError:
+    description: Unexpected error
+    schema:
+      $ref: "#/definitions/Error"
+#  securitySchemes:
+#    jwt:
+#      type: http
+#      scheme: bearer
+#      description: "Use JWT token provided as bearer token"
+paths:
+  /prepare:
+    post:
+      summary: Prepare application for a disruption.
+      operationId: prepareApplication
+      tags:
+        - disruption
+      consumes:
+        - application/json
+      parameters:
+        - $ref: '#/parameters/disruptionParam'
+      responses:
+        '200':
+          description: Accepted, preparation planned.
+        '424':
+          description: Unable to accept due to internal constraints.
+        '425':
+          $ref: '#/responses/RetryAfter'
+        default: 
+          $ref: '#/responses/UnexpectedError'
+  /ready:
+    post:
+      summary: Check application readiness for a disruption.
+      operationId: checkReadiness
+      tags:
+        - disruption
+      consumes:
+        - application/json
+      parameters:
+        - $ref: '#/parameters/disruptionParam'
+      responses:
+        '200':
+          description: Ready.
+        '425':
+          $ref: '#/responses/RetryAfter'
+        default: 
+          $ref: '#/responses/UnexpectedError'
+  /cancel:
+    post:
+      summary: Cancel application preparation for a disruption.
+      operationId: cancelPreparation
+      tags:
+        - disruption
+      consumes:
+        - application/json
+      parameters:
+        - $ref: '#/parameters/disruptionParam'
+      responses:
+        '200':
+          description: Acknowledged.
+        default: 
+          $ref: '#/responses/UnexpectedError'

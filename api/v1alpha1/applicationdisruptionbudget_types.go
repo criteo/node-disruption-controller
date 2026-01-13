@@ -42,10 +42,16 @@ type ApplicationDisruptionBudgetSpec struct {
 	// It perform a POST http request containing the NodeDisruption that is being validated.
 	// Maintenance will proceed only if the endpoint responds 2XX.
 	// +kubebuilder:validation:Optional
-	HealthHook HealthHookSpec `json:"healthHook,omitempty"`
+	HealthHook HookSpec `json:"healthHook,omitempty"`
+
+	// HookV2BasePath holds the base path for the prepare, ready, cancel hooks that will be
+	// called at different stages of the NodeDisruption lifecycle.
+	// A POST http request containing a Disruption that is being reconciled is sent ot each of the hooks.
+	// +kubebuilder:validation:Optional
+	HookV2BasePath HookSpec `json:"hookV2BasePath,omitempty"`
 }
 
-type HealthHookSpec struct {
+type HookSpec struct {
 	// a PEM encoded CA bundle which will be used to validate the webhook's server certificate. If unspecified, system trust roots on the apiserver are used.
 	CaBundle string `json:"caBundle,omitempty"`
 	// URL that will be called by the hook, in standard URL form (`scheme://host:port/path`).

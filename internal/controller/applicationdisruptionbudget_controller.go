@@ -23,32 +23,39 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strconv"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
+	"github.com/criteo/node-disruption-controller/internal/appmgr"
+	"github.com/criteo/node-disruption-controller/internal/appmgrcli/disruption"
+	"github.com/criteo/node-disruption-controller/pkg/resolver"
 
+	httptransport "github.com/go-openapi/runtime/client"
+	"github.com/go-openapi/strfmt"
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
+	errorsk8s "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
-	"github.com/criteo/node-disruption-controller/pkg/resolver"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // ApplicationDisruptionBudgetReconciler reconciles a ApplicationDisruptionBudget object
 type ApplicationDisruptionBudgetReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme  *runtime.Scheme
+	HTTPCli *http.Client
 }
 
 //+kubebuilder:rbac:groups=nodedisruption.criteo.com,resources=applicationdisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
@@ -69,7 +76,7 @@ type ApplicationDisruptionBudgetReconciler struct {
 func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
-	err := r.Client.Get(ctx, req.NamespacedName, adb)
+	err := r.Get(ctx, req.NamespacedName, adb)
 	ref := nodedisruptionv1alpha1.NamespacedName{
 		Namespace: req.Namespace,
 		Name:      req.Name,
@@ -77,7 +84,7 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 	}
 
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if errorsk8s.IsNotFound(err) {
 			// If the resource was not found, nothing has to be done
 			PruneADBMetrics(ref)
 			return ctrl.Result{}, nil
@@ -125,7 +132,7 @@ func (r *ApplicationDisruptionBudgetReconciler) MapFuncBuilder() handler.MapFunc
 	// Look for all ADBs in the namespace, then see if they match the object
 	return func(ctx context.Context, object client.Object) (requests []reconcile.Request) {
 		adbs := nodedisruptionv1alpha1.ApplicationDisruptionBudgetList{}
-		err := r.Client.List(ctx, &adbs, &client.ListOptions{Namespace: object.GetNamespace()})
+		err := r.List(ctx, &adbs, &client.ListOptions{Namespace: object.GetNamespace()})
 		if err != nil {
 			// We cannot return an error so at least it should be logged
 			logger := log.FromContext(context.Background())
@@ -150,6 +157,7 @@ func (r *ApplicationDisruptionBudgetReconciler) MapFuncBuilder() handler.MapFunc
 // SetupWithManager sets up the controller with the Manager.
 func (r *ApplicationDisruptionBudgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(controller.TypedOptions[reconcile.Request]{SkipNameValidation: ptr.To(true)}). // TODO(j.clerc): refactor tests to avoid skipping name validation
 		For(&nodedisruptionv1alpha1.ApplicationDisruptionBudget{}).
 		Watches(
 			&corev1.Pod{},
@@ -170,6 +178,7 @@ type ApplicationDisruptionBudgetResolver struct {
 	ApplicationDisruptionBudget *nodedisruptionv1alpha1.ApplicationDisruptionBudget
 	Client                      client.Client
 	Resolver                    resolver.Resolver
+	hookCli                     disruption.ClientService
 }
 
 // Sync ensure the budget's status is up to date
@@ -214,6 +223,96 @@ func (r *ApplicationDisruptionBudgetResolver) GetNamespacedName() nodedisruption
 		Name:      r.ApplicationDisruptionBudget.Name,
 		Kind:      r.ApplicationDisruptionBudget.Kind,
 	}
+}
+
+func (r *ApplicationDisruptionBudgetResolver) V2HooksReady() bool {
+	return r.ApplicationDisruptionBudget.Spec.HookV2BasePath.URL != ""
+}
+
+func (r *ApplicationDisruptionBudgetResolver) CallPrepareHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+	svc, err := r.hookClient()
+	if err != nil {
+		return err
+	}
+
+	_, err = svc.PrepareApplication(&disruption.PrepareApplicationParams{
+		Body:       r.hookBody(nd),
+		HTTPClient: &http.Client{Timeout: timeout},
+	})
+	if err == nil {
+		return nil
+	}
+	if e, ok := err.(*disruption.PrepareApplicationStatus425); ok {
+		return fmt.Errorf("retry later, in %v seconds", e.RetryAfter)
+	}
+	return err
+}
+
+func (r *ApplicationDisruptionBudgetResolver) CallReadyHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+	svc, err := r.hookClient()
+	if err != nil {
+		return err
+	}
+
+	_, err = svc.CheckReadiness(&disruption.CheckReadinessParams{
+		Body:       r.hookBody(nd),
+		HTTPClient: &http.Client{Timeout: timeout},
+	})
+	if err == nil {
+		return nil
+	}
+	if e, ok := err.(*disruption.CheckReadinessStatus425); ok {
+		return fmt.Errorf("retry later, in %v seconds", e.RetryAfter)
+	}
+	return err
+}
+
+func (r *ApplicationDisruptionBudgetResolver) CallCancelHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+	svc, err := r.hookClient()
+	if err != nil {
+		return err
+	}
+
+	_, err = svc.CancelPreparation(&disruption.CancelPreparationParams{
+		Body:       r.hookBody(nd),
+		HTTPClient: &http.Client{Timeout: timeout},
+	})
+	return err
+}
+
+func (r *ApplicationDisruptionBudgetResolver) hookClient() (disruption.ClientService, error) {
+	if r.hookCli != nil {
+		return r.hookCli, nil
+	}
+
+	u, err := url.Parse(r.ApplicationDisruptionBudget.Spec.HookV2BasePath.URL)
+	if err != nil {
+		return nil, err
+	}
+	transport := httptransport.New(u.Host, u.Path, []string{u.Scheme})
+	r.hookCli = disruption.New(transport, strfmt.Default)
+	return r.hookCli, nil
+}
+
+func (r *ApplicationDisruptionBudgetResolver) hookBody(nd nodedisruptionv1alpha1.NodeDisruption) *appmgr.Disruption {
+	// Workaround potentially missing labels map without a custom method.
+	labels := nd.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	watchedNodes := resolver.NewNodeSetFromStringList(r.ApplicationDisruptionBudget.Status.WatchedNodes)
+	dis := &appmgr.Disruption{
+		UID:          string(nd.UID),
+		Name:         nd.Name,
+		CreationDate: strfmt.DateTime(nd.CreationTimestamp.Time),
+		StartDate:    strfmt.DateTime(nd.Spec.StartDate.Time),
+		Duration:     int64(nd.Spec.Duration.Seconds()),
+		DeadlineDate: strfmt.DateTime(nd.Spec.Retry.Deadline.Time),
+		CreatedBy:    labels["app.kubernetes.io/created-by"],
+		Type:         nd.Spec.Type,
+		Nodes:        resolver.NodeSetToStringList(watchedNodes.Intersection(resolver.NewNodeSetFromStringList(nd.Status.DisruptedNodes))),
+	}
+	return dis
 }
 
 // Call a lifecycle hook in order to synchronously validate a Node Disruption

@@ -20,19 +20,23 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"time"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/utils/strings/slices"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
@@ -75,11 +79,11 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	clusterResult := ctrl.Result{}
 
 	nd := &nodedisruptionv1alpha1.NodeDisruption{}
-	err := r.Client.Get(ctx, req.NamespacedName, nd)
+	err := r.Get(ctx, req.NamespacedName, nd)
 
 	if err != nil {
 		if errors.IsNotFound(err) {
-			PruneNodeDisruptionMetrics(req.NamespacedName.Name)
+			PruneNodeDisruptionMetrics(req.Name)
 			// If the ressource was not found, nothing has to be done
 			return clusterResult, nil
 		}
@@ -128,17 +132,18 @@ func PruneNodeDisruptionMetrics(nd_name string) {
 // UpdateNodeDisruptionMetrics update metrics for a Node Disruption
 func UpdateNodeDisruptionMetrics(nd *nodedisruptionv1alpha1.NodeDisruption) {
 	nd_state := 0
-	if nd.Status.State == nodedisruptionv1alpha1.Pending {
+	switch nd.Status.State {
+	case nodedisruptionv1alpha1.Pending:
 		nd_state = 0
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending), nd.Spec.Type).Set(1)
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted), nd.Spec.Type).Set(0)
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected), nd.Spec.Type).Set(0)
-	} else if nd.Status.State == nodedisruptionv1alpha1.Rejected {
+	case nodedisruptionv1alpha1.Rejected:
 		nd_state = -1
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending), nd.Spec.Type).Set(0)
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected), nd.Spec.Type).Set(1)
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Granted), nd.Spec.Type).Set(0)
-	} else if nd.Status.State == nodedisruptionv1alpha1.Granted {
+	case nodedisruptionv1alpha1.Granted:
 		nd_state = 1
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Pending), nd.Spec.Type).Set(0)
 		NodeDisruptionStateAsLabel.WithLabelValues(nd.Name, string(nodedisruptionv1alpha1.Rejected), nd.Spec.Type).Set(0)
@@ -164,6 +169,7 @@ func (r *NodeDisruptionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Recorder = mgr.GetEventRecorderFor("node-disruption-controller")
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nodedisruptionv1alpha1.NodeDisruption{}).
+		WithOptions(controller.TypedOptions[reconcile.Request]{SkipNameValidation: ptr.To(true)}). // TODO(j.clerc): refactor tests to avoid skipping name validation
 		Complete(r)
 }
 
@@ -201,9 +207,10 @@ func (ndr *SingleNodeDisruptionReconciler) TryTransitionState(ctx context.Contex
 		if err != nil {
 			return err
 		}
-		if ndr.NodeDisruption.Status.State == nodedisruptionv1alpha1.Granted {
+		switch ndr.NodeDisruption.Status.State {
+		case nodedisruptionv1alpha1.Granted:
 			NodeDisruptionGrantedTotal.WithLabelValues(ndr.NodeDisruption.Spec.Type).Inc()
-		} else if ndr.NodeDisruption.Status.State == nodedisruptionv1alpha1.Rejected {
+		case nodedisruptionv1alpha1.Rejected:
 			NodeDisruptionRejectedTotal.WithLabelValues(ndr.NodeDisruption.Spec.Type).Inc()
 		}
 	}
@@ -240,7 +247,7 @@ func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Co
 	}
 
 	if !anyFailed {
-		anyFailed, statuses = ndr.ValidateWithBudgetConstraints(ctx, budgets)
+		anyFailed, statuses = ndr.ValidateWithBudgetConstraints(ctx, budgets, ndr.NodeDisruption.Status.DisruptedDisruptionBudgets)
 	}
 
 	if !anyFailed {
@@ -249,12 +256,19 @@ func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Co
 		if !nextRetryDate.IsZero() {
 			state = nodedisruptionv1alpha1.Pending
 		} else {
+			anyPreparing := slices.IndexFunc(statuses, func(s nodedisruptionv1alpha1.DisruptedBudgetStatus) bool {
+				return s.Preparing
+			})
 			for _, status := range statuses {
-				if !status.Ok {
+				if !status.Preparing && !status.Ok {
 					logger.Info("Disruption rejected", "status", status)
 				}
 			}
-			state = nodedisruptionv1alpha1.Rejected
+			if anyPreparing >= 0 {
+				state = nodedisruptionv1alpha1.Pending
+			} else {
+				state = nodedisruptionv1alpha1.Rejected
+			}
 		}
 	}
 
@@ -357,7 +371,7 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 }
 
 // ValidateBudgetConstraints check that the Node Disruption is valid against the budgets defined in the cluster
-func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx context.Context, budgets []Budget) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
+func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx context.Context, budgets []Budget, currentStatuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
 	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
 	anyFailed = false
 
@@ -387,26 +401,84 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 	}
 
 	for _, budget := range impactedBudgets {
-		err := budget.CallHealthHook(ctx, ndr.NodeDisruption, ndr.Config.HealthHookTimeout)
-		ref := budget.GetNamespacedName()
-		if err != nil {
-			anyFailed = true
-			status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
-				Reference: ref,
-				Reason:    fmt.Sprintf("Unhealthy: %s", err),
-				Ok:        false,
+		if budget.V2HooksReady() {
+			idx := slices.IndexFunc(currentStatuses, func(s nodedisruptionv1alpha1.DisruptedBudgetStatus) bool {
+				return s.Reference == budget.GetNamespacedName()
+			})
+			st := nodedisruptionv1alpha1.DisruptedBudgetStatus{}
+			if idx > -1 {
+				st = currentStatuses[idx]
+			}
+			status := ndr.v2HookCheck(ctx, budget, st)
+			if !status.Ok {
+				anyFailed = true
 			}
 			statuses = append(statuses, status)
-			DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
-			break
+		} else {
+			status := ndr.legacyHookCheck(ctx, budget)
+			if !status.Ok {
+				anyFailed = true
+			}
+			statuses = append(statuses, status)
 		}
-		DisruptionBudgetGrantedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
-		statuses = append(statuses, nodedisruptionv1alpha1.DisruptedBudgetStatus{
-			Reference: budget.GetNamespacedName(),
-			Reason:    "",
-			Ok:        true,
-		})
 	}
 
 	return anyFailed, statuses
+}
+
+func (ndr *SingleNodeDisruptionReconciler) v2HookCheck(ctx context.Context, budget Budget, currentStatus nodedisruptionv1alpha1.DisruptedBudgetStatus) nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	logger := log.FromContext(ctx)
+
+	ref := budget.GetNamespacedName()
+	if !currentStatus.Ok && !currentStatus.Preparing {
+		if err := budget.CallPrepareHook(ctx, ndr.NodeDisruption, ndr.Config.HealthHookTimeout); err != nil {
+			logger.Error(err, "failed to call prepare hook")
+			return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+				Reference: ref,
+				Reason:    fmt.Sprintf("cannot prepare disruption: %s", err),
+				Ok:        false,
+				Preparing: false,
+			}
+		}
+		return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: ref,
+			Preparing: true,
+			Ok:        false,
+		}
+	} else if currentStatus.Preparing {
+		if err := budget.CallReadyHook(ctx, ndr.NodeDisruption, ndr.Config.HealthHookTimeout); err != nil {
+			logger.Error(err, "failed to call ready hook")
+			return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+				Reference: ref,
+				Reason:    fmt.Sprintf("not ready for disruption: %s", err),
+				Ok:        false,
+				Preparing: true,
+			}
+		}
+	}
+	return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+		Reference: ref,
+		Ok:        true,
+		Preparing: true,
+	}
+}
+
+func (ndr *SingleNodeDisruptionReconciler) legacyHookCheck(ctx context.Context, budget Budget) nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	err := budget.CallHealthHook(ctx, ndr.NodeDisruption, ndr.Config.HealthHookTimeout)
+	ref := budget.GetNamespacedName()
+	if err != nil {
+		status := nodedisruptionv1alpha1.DisruptedBudgetStatus{
+			Reference: ref,
+			Reason:    fmt.Sprintf("Unhealthy: %s", err),
+			Ok:        false,
+		}
+		DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
+		return status
+	}
+	DisruptionBudgetGrantedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
+	return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+		Reference: budget.GetNamespacedName(),
+		Reason:    "",
+		Ok:        true,
+	}
 }

@@ -17,11 +17,19 @@ type Budget interface {
 	IsImpacted(resolver.NodeSet) bool
 	// Return the number of disruption allowed considering a list of current node disruptions
 	TolerateDisruption(resolver.NodeSet) bool
+	// Return true if the budget has v2 hooks configured (for prepare, ready, cancel)
+	V2HooksReady() bool
+	// Call the prepare hook to trigger the preparation of the application for disruption
+	CallPrepareHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error
+	// Call the ready hook to validate that the application is ready for disruption
+	CallReadyHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error
+	// Call the cancel hook to cancel any preparation for disruption
+	CallCancelHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error
 	// Call a lifecycle hook in order to synchronously validate a Node Disruption
 	CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error
 	// Apply the budget's status to Kubernetes
 	UpdateStatus(context.Context) error
-	// Get the name, namespace and kind of bduget
+	// Get the name, namespace and kind of budget
 	GetNamespacedName() nodedisruptionv1alpha1.NamespacedName
 }
 
@@ -49,11 +57,12 @@ func UpdateBudgetStatusMetrics(ref nodedisruptionv1alpha1.NamespacedName, status
 	for _, disruption := range status.Disruptions {
 		nd_state := 0
 		state := nodedisruptionv1alpha1.NodeDisruptionState(disruption.State)
-		if state == nodedisruptionv1alpha1.Pending {
+		switch state {
+		case nodedisruptionv1alpha1.Pending:
 			nd_state = 0
-		} else if state == nodedisruptionv1alpha1.Rejected {
+		case nodedisruptionv1alpha1.Rejected:
 			nd_state = -1
-		} else if state == nodedisruptionv1alpha1.Granted {
+		case nodedisruptionv1alpha1.Granted:
 			nd_state = 1
 		}
 		DisruptionBudgetDisruptions.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, disruption.Name).Set(float64(nd_state))

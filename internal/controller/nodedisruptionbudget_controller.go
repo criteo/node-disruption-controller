@@ -22,21 +22,23 @@ import (
 	"reflect"
 	"time"
 
+	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
+
+	"github.com/criteo/node-disruption-controller/pkg/resolver"
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
-	"github.com/criteo/node-disruption-controller/pkg/resolver"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // NodeDisruptionBudgetReconciler reconciles a NodeDisruptionBudget object
@@ -61,7 +63,7 @@ type NodeDisruptionBudgetReconciler struct {
 func (r *NodeDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	ndb := &nodedisruptionv1alpha1.NodeDisruptionBudget{}
-	err := r.Client.Get(ctx, req.NamespacedName, ndb)
+	err := r.Get(ctx, req.NamespacedName, ndb)
 	ref := nodedisruptionv1alpha1.NamespacedName{
 		Namespace: req.Namespace,
 		Name:      req.Name,
@@ -118,7 +120,7 @@ func (r *NodeDisruptionBudgetReconciler) MapFuncBuilder() handler.MapFunc {
 	// Look for all NDBs in the namespace, then see if they match the object
 	return func(ctx context.Context, object client.Object) (requests []reconcile.Request) {
 		ndbs := nodedisruptionv1alpha1.NodeDisruptionBudgetList{}
-		err := r.Client.List(ctx, &ndbs, &client.ListOptions{Namespace: object.GetNamespace()})
+		err := r.List(ctx, &ndbs, &client.ListOptions{Namespace: object.GetNamespace()})
 		if err != nil {
 			// We cannot return an error so at least it should be logged
 			logger := log.FromContext(context.Background())
@@ -143,6 +145,7 @@ func (r *NodeDisruptionBudgetReconciler) MapFuncBuilder() handler.MapFunc {
 // SetupWithManager sets up the controller with the Manager.
 func (r *NodeDisruptionBudgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(controller.TypedOptions[reconcile.Request]{SkipNameValidation: ptr.To(true)}). // TODO(j.clerc): refactor tests to avoid skipping name validation
 		For(&nodedisruptionv1alpha1.NodeDisruptionBudget{}).
 		Watches(
 			&corev1.Node{},
@@ -195,6 +198,22 @@ func (r *NodeDisruptionBudgetResolver) TolerateDisruption(disruptedNodes resolve
 	watchedNodes := resolver.NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes)
 	disruptedNodesCount := watchedNodes.Intersection(disruptedNodes).Len()
 	return r.NodeDisruptionBudget.Status.DisruptionsAllowed-disruptedNodesCount >= 0
+}
+
+func (r *NodeDisruptionBudgetResolver) V2HooksReady() bool {
+	return false
+}
+
+func (r *NodeDisruptionBudgetResolver) CallPrepareHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+	return nil
+}
+
+func (r *NodeDisruptionBudgetResolver) CallReadyHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+	return nil
+}
+
+func (r *NodeDisruptionBudgetResolver) CallCancelHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+	return nil
 }
 
 // Call a lifecycle hook in order to synchronously validate a Node Disruption

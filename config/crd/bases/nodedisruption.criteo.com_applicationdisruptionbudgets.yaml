@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: applicationdisruptionbudgets.nodedisruption.criteo.com
 spec:
   group: nodedisruption.criteo.com
@@ -69,6 +69,22 @@ spec:
                       URL form (`scheme://host:port/path`).
                     type: string
                 type: object
+              hookV2BasePath:
+                description: |-
+                  HookV2BasePath holds the base path for the prepare, ready, cancel hooks that will be
+                  called at different stages of the NodeDisruption lifecycle.
+                  A POST http request containing a Disruption that is being reconciled is sent ot each of the hooks.
+                properties:
+                  caBundle:
+                    description: a PEM encoded CA bundle which will be used to validate
+                      the webhook's server certificate. If unspecified, system trust
+                      roots on the apiserver are used.
+                    type: string
+                  url:
+                    description: URL that will be called by the hook, in standard
+                      URL form (`scheme://host:port/path`).
+                    type: string
+                type: object
               maxDisruptions:
                 description: A NodeDisruption is allowed if at most "maxDisruptions"
                   nodes selected by selectors are unavailable after the disruption.
@@ -103,11 +119,13 @@ spec:
                           items:
                             type: string
                           type: array
+                          x-kubernetes-list-type: atomic
                       required:
                       - key
                       - operator
                       type: object
                     type: array
+                    x-kubernetes-list-type: atomic
                   matchLabels:
                     additionalProperties:
                       type: string
@@ -148,11 +166,13 @@ spec:
                           items:
                             type: string
                           type: array
+                          x-kubernetes-list-type: atomic
                       required:
                       - key
                       - operator
                       type: object
                     type: array
+                    x-kubernetes-list-type: atomic
                   matchLabels:
                     additionalProperties:
                       type: string

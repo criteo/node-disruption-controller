@@ -19,57 +19,7 @@ rules:
   - nodedisruption.criteo.com
   resources:
   - applicationdisruptionbudgets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - nodedisruption.criteo.com
-  resources:
-  - applicationdisruptionbudgets/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - nodedisruption.criteo.com
-  resources:
-  - applicationdisruptionbudgets/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - nodedisruption.criteo.com
-  resources:
   - nodedisruptionbudgets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - nodedisruption.criteo.com
-  resources:
-  - nodedisruptionbudgets/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - nodedisruption.criteo.com
-  resources:
-  - nodedisruptionbudgets/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - nodedisruption.criteo.com
-  resources:
   - nodedisruptions
   verbs:
   - create
@@ -82,12 +32,16 @@ rules:
 - apiGroups:
   - nodedisruption.criteo.com
   resources:
+  - applicationdisruptionbudgets/finalizers
+  - nodedisruptionbudgets/finalizers
   - nodedisruptions/finalizers
   verbs:
   - update
 - apiGroups:
   - nodedisruption.criteo.com
   resources:
+  - applicationdisruptionbudgets/status
+  - nodedisruptionbudgets/status
   - nodedisruptions/status
   verbs:
   - get

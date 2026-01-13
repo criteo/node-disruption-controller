@@ -36,6 +36,22 @@ func (m *MockBudget) TolerateDisruption(resolver.NodeSet) bool {
 	return m.tolerate
 }
 
+func (m *MockBudget) V2HooksReady() bool {
+	return false
+}
+
+func (m *MockBudget) CallPrepareHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error {
+	return nil
+}
+
+func (m *MockBudget) CallReadyHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error {
+	return nil
+}
+
+func (m *MockBudget) CallCancelHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error {
+	return nil
+}
+
 // Check health make a synchronous health check on the underlying resource of a budget
 func (m *MockBudget) CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error {
 	m.healthChecked = true
@@ -78,7 +94,7 @@ func TestValidateWithBudgetConstraintsNoImpactedBudget(t *testing.T) {
 	}
 
 	budgets := []controller.Budget{&budget1, &budget2}
-	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets)
+	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets, nil)
 	assert.False(t, anyFailed)
 	assert.Equal(t, len(statuses), 0)
 }
@@ -110,7 +126,7 @@ func TestValidationImpactedAllOk(t *testing.T) {
 
 	budgets := []controller.Budget{&budget1, &budget2}
 
-	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets)
+	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets, nil)
 	assert.False(t, anyFailed)
 	assert.Equal(t, len(statuses), 2)
 }
@@ -142,7 +158,7 @@ func TestValidateWithBudgetConstraintsFailAtDisruption(t *testing.T) {
 
 	budgets := []controller.Budget{&budget1, &budget2}
 
-	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets)
+	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets, nil)
 	assert.True(t, anyFailed)
 	assert.Equal(t, len(statuses), 1)
 	assert.False(t, statuses[0].Ok)
@@ -179,7 +195,7 @@ func TestValidateWithBudgetConstraintsFailAtHealth(t *testing.T) {
 
 	budgets := []controller.Budget{&budget1, &budget2}
 
-	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets)
+	anyFailed, statuses := reconciler.ValidateWithBudgetConstraints(context.Background(), budgets, nil)
 	assert.True(t, anyFailed)
 	assert.False(t, statuses[0].Ok)
 	assert.NotEmpty(t, statuses[0].Reason, "Rejected budget should provide a reason")

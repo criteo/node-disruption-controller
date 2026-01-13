@@ -248,7 +248,7 @@ func (r *Resolver) GetNodeFromNodeSelector(ctx context.Context, nodeSelector met
 	}
 
 	for _, node := range nodes.Items {
-		nodeNames.Insert(node.ObjectMeta.Name)
+		nodeNames.Insert(node.Name)
 	}
 	return nodeSet, nil
 }

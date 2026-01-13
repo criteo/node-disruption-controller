@@ -49,7 +49,16 @@ type NodeDisruptionSpec struct {
 
 	// Label query over nodes that will be impacted by the disruption
 	NodeSelector metav1.LabelSelector `json:"nodeSelector,omitempty"`
-	Retry        RetrySpec            `json:"retry,omitempty"`
+
+	// StartDate when the disruption should start
+	StartDate metav1.Time `json:"startDate,omitempty"`
+
+	// Duration of the disruption once granted
+	Duration metav1.Duration `json:"duration,omitempty"`
+
+	// Retry configuration allows to retry a disruption after rejection until the given deadline
+	Retry RetrySpec `json:"retry,omitempty"`
+
 	// Type of the node disruption
 	Type string `json:"type,omitempty"`
 }
@@ -92,6 +101,7 @@ type NodeDisruptionStatus struct {
 type DisruptedBudgetStatus struct {
 	Reference NamespacedName `json:"reference,omitempty"`
 	Reason    string         `json:"reason"`
+	Preparing bool           `json:"preparing"`
 	Ok        bool           `json:"ok"`
 }
 
