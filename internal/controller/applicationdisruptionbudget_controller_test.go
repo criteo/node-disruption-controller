@@ -196,6 +196,7 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 					},
 					Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
 						NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+						Type:         "maintenance",
 					},
 				}
 				Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
@@ -329,21 +330,21 @@ var _ = Describe("ApplicationDisruptionBudget controller", func() {
 				}
 				Expect(k8sClient.Create(ctx, adb)).Should(Succeed())
 
-			By("checking the ApplicationDisruptionBudget watches no nodes")
-			ADBLookupKey := types.NamespacedName{Name: ADBname, Namespace: ADBNamespace}
-			createdADB := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
-			Eventually(func() []string {
-				err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
-				Expect(err).Should(Succeed())
-				return createdADB.Status.WatchedNodes
-			}, timeout, interval).Should(BeEmpty())
+				By("checking the ApplicationDisruptionBudget watches no nodes")
+				ADBLookupKey := types.NamespacedName{Name: ADBname, Namespace: ADBNamespace}
+				createdADB := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
+				Eventually(func() []string {
+					err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
+					Expect(err).Should(Succeed())
+					return createdADB.Status.WatchedNodes
+				}, timeout, interval).Should(BeEmpty())
 
-			By("verifying disruptions are still allowed")
-			Eventually(func() int {
-				err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
-				Expect(err).Should(Succeed())
-				return createdADB.Status.DisruptionsAllowed
-			}, timeout, interval).Should(Equal(1))
+				By("verifying disruptions are still allowed")
+				Eventually(func() int {
+					err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
+					Expect(err).Should(Succeed())
+					return createdADB.Status.DisruptionsAllowed
+				}, timeout, interval).Should(Equal(1))
 			})
 		})
 

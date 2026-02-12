@@ -61,6 +61,8 @@ func clearAllNodeDisruptionResources() {
 
 }
 
+var defaultNodeDisruptionTypes = []string{"maintenance", "maintenance1"}
+
 func startReconcilerWithConfig(config NodeDisruptionReconcilerConfig) context.CancelFunc {
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
@@ -75,11 +77,17 @@ func startReconcilerWithConfig(config NodeDisruptionReconcilerConfig) context.Ca
 	err = (&ApplicationDisruptionBudgetReconciler{
 		Client: k8sManager.GetClient(),
 		Scheme: k8sManager.GetScheme(),
+		Config: ApplicationDisruptionBudgetConfig{
+			DefaultNodeDisruptionTypes: defaultNodeDisruptionTypes,
+		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 	err = (&NodeDisruptionBudgetReconciler{
 		Client: k8sManager.GetClient(),
 		Scheme: k8sManager.GetScheme(),
+		Config: NodeDisruptionBudgetConfig{
+			DefaultNodeDisruptionTypes: defaultNodeDisruptionTypes,
+		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -206,6 +214,7 @@ var _ = Describe("NodeDisruption controller", func() {
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
 							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:         "maintenance",
 						},
 					}
 					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
@@ -297,6 +306,7 @@ var _ = Describe("NodeDisruption controller", func() {
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
 							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:         "maintenance",
 						},
 					}
 					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
@@ -390,6 +400,7 @@ var _ = Describe("NodeDisruption controller", func() {
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
 							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:         "maintenance",
 						},
 					}
 					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
@@ -448,6 +459,7 @@ var _ = Describe("NodeDisruption controller", func() {
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
 							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:         "maintenance",
 						},
 					}
 					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
@@ -495,6 +507,7 @@ var _ = Describe("NodeDisruption controller", func() {
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
 							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:         "maintenance",
 							Retry: nodedisruptionv1alpha1.RetrySpec{
 								Enabled: true,
 							},
@@ -546,6 +559,7 @@ var _ = Describe("NodeDisruption controller", func() {
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
 							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:         "maintenance",
 							Retry: nodedisruptionv1alpha1.RetrySpec{
 								Enabled: true,
 								// Deadline is 1s in the past
@@ -596,6 +610,7 @@ var _ = Describe("NodeDisruption controller", func() {
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
 							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:         "maintenance",
 							Retry: nodedisruptionv1alpha1.RetrySpec{
 								Enabled: true,
 								// Deadline is 1m in future
@@ -661,6 +676,64 @@ var _ = Describe("NodeDisruption controller", func() {
 				})
 			})
 
+			When("there is an ADB that does not support the node disruption type", func() {
+				It("ignores the budget and grants the disruption", func() {
+					By("creating a budget that rejects everything but only supports maintenance1 type")
+					adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "ApplicationDisruptionBudget",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test-unsupported-type",
+							Namespace: "default",
+						},
+						Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+							PodSelector:                  metav1.LabelSelector{MatchLabels: podLabels},
+							MaxDisruptions:               0,
+							SupportedNodeDisruptionTypes: []string{"maintenance1"},
+						},
+					}
+					Expect(k8sClient.Create(ctx, adb)).Should(Succeed())
+
+					By("checking the ApplicationDisruptionBudget is synchronized")
+					ADBLookupKey := types.NamespacedName{Name: "test-unsupported-type", Namespace: "default"}
+					createdADB := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
+					Eventually(func() []string {
+						err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
+						Expect(err).Should(Succeed())
+						return createdADB.Status.WatchedNodes
+					}, timeout, interval).Should(Equal([]string{"node1"}))
+
+					By("creating a NodeDisruption with type maintenance (not supported by the ADB)")
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruption",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      NDName,
+							Namespace: NDNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:         "maintenance",
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					createdDisruption := &nodedisruptionv1alpha1.NodeDisruption{}
+
+					By("checking the NodeDisruption is granted because the ADB does not apply")
+					Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+						err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+						if err != nil {
+							panic("should be able to get")
+						}
+						return createdDisruption.Status.State
+					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Granted))
+				})
+			})
 		})
 
 		Context("If a NodeDisruption's nodeSelector does not match any node", func() {
@@ -681,6 +754,7 @@ var _ = Describe("NodeDisruption controller", func() {
 					},
 					Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
 						NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabelsNoMatch},
+						Type:         "maintenance",
 					},
 				}
 				Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
@@ -737,7 +811,7 @@ var _ = Describe("NodeDisruption controller", func() {
 
 			BeforeEach(func() {
 				By("configuring a first disruption")
-				createNodeDisruption(firstDisruptionName, NDNamespace, nodeLabels1, "", ctx)
+				createNodeDisruption(firstDisruptionName, NDNamespace, nodeLabels1, "maintenance", ctx)
 			})
 			AfterEach(func() {
 				clearAllNodeDisruptionResources()
@@ -757,7 +831,7 @@ var _ = Describe("NodeDisruption controller", func() {
 						})
 
 						By("creating an overlapping disruption")
-						createNodeDisruption(overlappingDisruptionName, NDNamespace, node2Label, "", ctx)
+						createNodeDisruption(overlappingDisruptionName, NDNamespace, node2Label, "maintenance", ctx)
 					})
 					It("rejects the NodeDisruption", func() {
 						Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
@@ -784,7 +858,7 @@ var _ = Describe("NodeDisruption controller", func() {
 						})
 
 						By("creating an overlapping disruption")
-						createNodeDisruption(overlappingDisruptionName, NDNamespace, node2Label, "", ctx)
+						createNodeDisruption(overlappingDisruptionName, NDNamespace, node2Label, "maintenance", ctx)
 					})
 					It("accepts the NodeDisruption", func() {
 						Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
@@ -803,7 +877,7 @@ var _ = Describe("NodeDisruption controller", func() {
 			var (
 				createdDisruption      = &nodedisruptionv1alpha1.NodeDisruption{}
 				disruptionName         = "disruption-test"
-				allowedDisruptionTypes = []string{"maintenance", "decommission", "tor-maintenance"}
+				allowedDisruptionTypes = []string{"maintenance", "maintenance1"}
 			)
 
 			AfterEach(func() {

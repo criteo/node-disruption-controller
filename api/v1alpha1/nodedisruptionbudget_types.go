@@ -37,6 +37,11 @@ type NodeDisruptionBudgetSpec struct {
 	MinUndisruptedNodes int `json:"minUndisruptedNodes"`
 	// NodeSelector query over pods whose nodes are managed by the disruption budget.
 	NodeSelector metav1.LabelSelector `json:"nodeSelector,omitempty"`
+	// SupportedNodeDisruptionTypes is the list of node disruption types that this budget supports.
+	// When set, this budget will only be considered during reconciliation of NodeDisruptions whose type
+	// is in this list. When empty, the controller's default node disruption types are used.
+	// +kubebuilder:validation:Optional
+	SupportedNodeDisruptionTypes []string `json:"supportedNodeDisruptionTypes,omitempty"`
 }
 
 //+kubebuilder:object:root=true

@@ -164,6 +164,7 @@ var _ = Describe("NodeDisruptionBudget controller", func() {
 						},
 						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
 							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:         "maintenance",
 						},
 					}
 					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
@@ -201,21 +202,21 @@ var _ = Describe("NodeDisruptionBudget controller", func() {
 					}
 					Expect(k8sClient.Create(ctx, ndb)).Should(Succeed())
 
-				By("checking the NodeDisruptionBudget watches no nodes")
-				NDBLookupKey := types.NamespacedName{Name: NDBname, Namespace: NDBNamespace}
-				createdNDB := &nodedisruptionv1alpha1.NodeDisruptionBudget{}
-				Eventually(func() []string {
-					err := k8sClient.Get(ctx, NDBLookupKey, createdNDB)
-					Expect(err).Should(Succeed())
-					return createdNDB.Status.WatchedNodes
-				}, timeout, interval).Should(BeEmpty())
+					By("checking the NodeDisruptionBudget watches no nodes")
+					NDBLookupKey := types.NamespacedName{Name: NDBname, Namespace: NDBNamespace}
+					createdNDB := &nodedisruptionv1alpha1.NodeDisruptionBudget{}
+					Eventually(func() []string {
+						err := k8sClient.Get(ctx, NDBLookupKey, createdNDB)
+						Expect(err).Should(Succeed())
+						return createdNDB.Status.WatchedNodes
+					}, timeout, interval).Should(BeEmpty())
 
-				By("verifying disruptions calculation with no nodes")
-				Eventually(func() int {
-					err := k8sClient.Get(ctx, NDBLookupKey, createdNDB)
-					Expect(err).Should(Succeed())
-					return createdNDB.Status.DisruptionsAllowed
-				}, timeout, interval).Should(Equal(0))
+					By("verifying disruptions calculation with no nodes")
+					Eventually(func() int {
+						err := k8sClient.Get(ctx, NDBLookupKey, createdNDB)
+						Expect(err).Should(Succeed())
+						return createdNDB.Status.DisruptionsAllowed
+					}, timeout, interval).Should(Equal(0))
 				})
 			})
 

@@ -31,6 +31,8 @@ type Budget interface {
 	UpdateStatus(context.Context) error
 	// Get the name, namespace and kind of budget
 	GetNamespacedName() nodedisruptionv1alpha1.NamespacedName
+	// Get the list of supported node disruption types for this budget
+	GetSupportedDisruptionTypes() []string
 }
 
 // PruneBudgetMetrics remove metrics for a Disruption Budget that doesn't exist anymore
