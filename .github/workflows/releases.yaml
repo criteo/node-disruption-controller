@@ -27,7 +27,9 @@ jobs:
     - name: Build
       run: make all
     - name: Upload
-      uses: fnkr/github-action-ghr@v1
+      uses: softprops/action-gh-release@v1
+      with:
+        files: bin/manager
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GHR_PATH: bin/manager
