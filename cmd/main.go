@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -61,6 +62,7 @@ func main() {
 	var rejectOverlappingDisruption bool
 	var healthHookTimeout time.Duration
 	var nodeDisruptionTypesRaw string
+	var defaultNodeDisruptionTypesRaw string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -71,6 +73,7 @@ func main() {
 	flag.BoolVar(&rejectOverlappingDisruption, "reject-overlapping-disruption", false, "Automatically reject any overlapping NodeDisruption (based on node selector), preserving the oldest one")
 	flag.DurationVar(&healthHookTimeout, "healthhook-timeout", controller.DefaultHealthHookTimeout, "HTTP client timeout for calling HealthHook resolved from ADB")
 	flag.StringVar(&nodeDisruptionTypesRaw, "node-disruption-types", "", "The list of types allowed for a node disruption separated by a comma.")
+	flag.StringVar(&defaultNodeDisruptionTypesRaw, "default-node-disruption-types", "", "The default list of node disruption types for ADBs that don't specify supportedNodeDisruptionTypes. Must be a subset of --node-disruption-types.")
 
 	opts := zap.Options{
 		Development: true,
@@ -105,6 +108,20 @@ func main() {
 	}
 
 	nodeDisruptionTypes := strings.FieldsFunc(nodeDisruptionTypesRaw, func(c rune) bool { return c == ',' })
+	defaultNodeDisruptionTypes := strings.FieldsFunc(defaultNodeDisruptionTypesRaw, func(c rune) bool { return c == ',' })
+
+	if len(nodeDisruptionTypes) > 0 {
+		nodeDisruptionTypesSet := make(map[string]struct{}, len(nodeDisruptionTypes))
+		for _, t := range nodeDisruptionTypes {
+			nodeDisruptionTypesSet[t] = struct{}{}
+		}
+		for _, t := range defaultNodeDisruptionTypes {
+			if _, ok := nodeDisruptionTypesSet[t]; !ok {
+				setupLog.Error(fmt.Errorf("default-node-disruption-types contains type %q which is not in node-disruption-types", t), "invalid configuration")
+				os.Exit(1)
+			}
+		}
+	}
 
 	if err = (&controller.NodeDisruptionReconciler{
 		Client: mgr.GetClient(),
@@ -123,6 +140,9 @@ func main() {
 	if err = (&controller.ApplicationDisruptionBudgetReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Config: controller.ApplicationDisruptionBudgetConfig{
+			DefaultNodeDisruptionTypes: defaultNodeDisruptionTypes,
+		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ApplicationDisruptionBudget")
 		os.Exit(1)
@@ -130,6 +150,9 @@ func main() {
 	if err = (&controller.NodeDisruptionBudgetReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Config: controller.NodeDisruptionBudgetConfig{
+			DefaultNodeDisruptionTypes: defaultNodeDisruptionTypes,
+		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "NodeDisruptionBudget")
 		os.Exit(1)

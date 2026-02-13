@@ -49,6 +49,12 @@ type ApplicationDisruptionBudgetSpec struct {
 	// A POST http request containing a Disruption that is being reconciled is sent ot each of the hooks.
 	// +kubebuilder:validation:Optional
 	HookV2BasePath HookSpec `json:"hookV2BasePath,omitempty"`
+
+	// SupportedNodeDisruptionTypes is the list of node disruption types that this budget supports.
+	// When set, this budget will only be considered during reconciliation of NodeDisruptions whose type
+	// is in this list. When empty, the controller's default node disruption types are used.
+	// +kubebuilder:validation:Optional
+	SupportedNodeDisruptionTypes []string `json:"supportedNodeDisruptionTypes,omitempty"`
 }
 
 type HookSpec struct {

@@ -51,11 +51,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+type ApplicationDisruptionBudgetConfig struct {
+	DefaultNodeDisruptionTypes []string
+}
+
 // ApplicationDisruptionBudgetReconciler reconciles a ApplicationDisruptionBudget object
 type ApplicationDisruptionBudgetReconciler struct {
 	client.Client
 	Scheme  *runtime.Scheme
 	HTTPCli *http.Client
+	Config  ApplicationDisruptionBudgetConfig
 }
 
 //+kubebuilder:rbac:groups=nodedisruption.criteo.com,resources=applicationdisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
@@ -90,6 +95,13 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
+	}
+
+	if len(adb.Spec.SupportedNodeDisruptionTypes) == 0 && len(r.Config.DefaultNodeDisruptionTypes) > 0 {
+		adb.Spec.SupportedNodeDisruptionTypes = r.Config.DefaultNodeDisruptionTypes
+		if err := r.Update(ctx, adb); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	UpdateADBMetrics(ref, adb)
@@ -223,6 +235,10 @@ func (r *ApplicationDisruptionBudgetResolver) GetNamespacedName() nodedisruption
 		Name:      r.ApplicationDisruptionBudget.Name,
 		Kind:      r.ApplicationDisruptionBudget.Kind,
 	}
+}
+
+func (r *ApplicationDisruptionBudgetResolver) GetSupportedDisruptionTypes() []string {
+	return r.ApplicationDisruptionBudget.Spec.SupportedNodeDisruptionTypes
 }
 
 func (r *ApplicationDisruptionBudgetResolver) V2HooksReady() bool {

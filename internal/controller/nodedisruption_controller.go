@@ -370,6 +370,10 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithInternalConstraints(ctx c
 	return false, statuses, nil
 }
 
+func (ndr *SingleNodeDisruptionReconciler) budgetSupportsDisruptionType(budget Budget) bool {
+	return slices.Contains(budget.GetSupportedDisruptionTypes(), ndr.NodeDisruption.Spec.Type)
+}
+
 // ValidateBudgetConstraints check that the Node Disruption is valid against the budgets defined in the cluster
 func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx context.Context, budgets []Budget, currentStatuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
 	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
@@ -377,6 +381,10 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 
 	impactedBudgets := []Budget{}
 	for _, budget := range budgets {
+		if !ndr.budgetSupportsDisruptionType(budget) {
+			continue
+		}
+
 		if !budget.IsImpacted(disruptedNodes) {
 			continue
 		}

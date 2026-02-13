@@ -14,9 +14,10 @@ import (
 )
 
 type MockBudget struct {
-	name     nodedisruptionv1alpha1.NamespacedName
-	impacted bool
-	tolerate bool
+	name           nodedisruptionv1alpha1.NamespacedName
+	impacted       bool
+	tolerate       bool
+	supportedTypes []string
 	// True if the budget was health checked
 	healthChecked bool
 	health        error
@@ -68,11 +69,18 @@ func (m *MockBudget) GetNamespacedName() nodedisruptionv1alpha1.NamespacedName {
 	return m.name
 }
 
+func (m *MockBudget) GetSupportedDisruptionTypes() []string {
+	return m.supportedTypes
+}
+
 func TestValidateWithBudgetConstraintsNoImpactedBudget(t *testing.T) {
 	nodes := []string{"node-dummy-0", "node-dummy-1"}
 	reconciler := controller.SingleNodeDisruptionReconciler{
 		Client: fake.NewClientBuilder().Build(),
 		NodeDisruption: nodedisruptionv1alpha1.NodeDisruption{
+			Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+				Type: "maintenance",
+			},
 			Status: nodedisruptionv1alpha1.NodeDisruptionStatus{
 				DisruptedNodes: nodes,
 			},
@@ -80,17 +88,19 @@ func TestValidateWithBudgetConstraintsNoImpactedBudget(t *testing.T) {
 	}
 
 	budget1 := MockBudget{
-		name:     nodedisruptionv1alpha1.NamespacedName{Namespace: "test1", Name: "test1"},
-		impacted: false,
-		tolerate: false,
-		health:   nil,
+		name:           nodedisruptionv1alpha1.NamespacedName{Namespace: "test1", Name: "test1"},
+		impacted:       false,
+		tolerate:       false,
+		supportedTypes: []string{"maintenance"},
+		health:         nil,
 	}
 
 	budget2 := MockBudget{
-		name:     nodedisruptionv1alpha1.NamespacedName{Namespace: "test2", Name: "test2"},
-		impacted: false,
-		tolerate: false,
-		health:   nil,
+		name:           nodedisruptionv1alpha1.NamespacedName{Namespace: "test2", Name: "test2"},
+		impacted:       false,
+		tolerate:       false,
+		supportedTypes: []string{"maintenance"},
+		health:         nil,
 	}
 
 	budgets := []controller.Budget{&budget1, &budget2}
@@ -104,6 +114,9 @@ func TestValidationImpactedAllOk(t *testing.T) {
 	reconciler := controller.SingleNodeDisruptionReconciler{
 		Client: fake.NewClientBuilder().Build(),
 		NodeDisruption: nodedisruptionv1alpha1.NodeDisruption{
+			Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+				Type: "maintenance",
+			},
 			Status: nodedisruptionv1alpha1.NodeDisruptionStatus{
 				DisruptedNodes: nodes,
 			},
@@ -111,17 +124,19 @@ func TestValidationImpactedAllOk(t *testing.T) {
 	}
 
 	budget1 := MockBudget{
-		name:     nodedisruptionv1alpha1.NamespacedName{Namespace: "test1", Name: "test1"},
-		impacted: true,
-		tolerate: true,
-		health:   nil,
+		name:           nodedisruptionv1alpha1.NamespacedName{Namespace: "test1", Name: "test1"},
+		impacted:       true,
+		tolerate:       true,
+		supportedTypes: []string{"maintenance"},
+		health:         nil,
 	}
 
 	budget2 := MockBudget{
-		name:     nodedisruptionv1alpha1.NamespacedName{Namespace: "test2", Name: "test2"},
-		impacted: true,
-		tolerate: true,
-		health:   nil,
+		name:           nodedisruptionv1alpha1.NamespacedName{Namespace: "test2", Name: "test2"},
+		impacted:       true,
+		tolerate:       true,
+		supportedTypes: []string{"maintenance"},
+		health:         nil,
 	}
 
 	budgets := []controller.Budget{&budget1, &budget2}
@@ -136,6 +151,9 @@ func TestValidateWithBudgetConstraintsFailAtDisruption(t *testing.T) {
 	reconciler := controller.SingleNodeDisruptionReconciler{
 		Client: fake.NewClientBuilder().Build(),
 		NodeDisruption: nodedisruptionv1alpha1.NodeDisruption{
+			Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+				Type: "maintenance",
+			},
 			Status: nodedisruptionv1alpha1.NodeDisruptionStatus{
 				DisruptedNodes: nodes,
 			},
@@ -143,17 +161,19 @@ func TestValidateWithBudgetConstraintsFailAtDisruption(t *testing.T) {
 	}
 
 	budget1 := MockBudget{
-		name:     nodedisruptionv1alpha1.NamespacedName{Namespace: "test1", Name: "test1"},
-		impacted: true,
-		tolerate: false,
-		health:   nil,
+		name:           nodedisruptionv1alpha1.NamespacedName{Namespace: "test1", Name: "test1"},
+		impacted:       true,
+		tolerate:       false,
+		supportedTypes: []string{"maintenance"},
+		health:         nil,
 	}
 
 	budget2 := MockBudget{
-		name:     nodedisruptionv1alpha1.NamespacedName{Namespace: "test2", Name: "test2"},
-		impacted: true,
-		tolerate: true,
-		health:   nil,
+		name:           nodedisruptionv1alpha1.NamespacedName{Namespace: "test2", Name: "test2"},
+		impacted:       true,
+		tolerate:       true,
+		supportedTypes: []string{"maintenance"},
+		health:         nil,
 	}
 
 	budgets := []controller.Budget{&budget1, &budget2}
@@ -173,6 +193,9 @@ func TestValidateWithBudgetConstraintsFailAtHealth(t *testing.T) {
 	reconciler := controller.SingleNodeDisruptionReconciler{
 		Client: fake.NewClientBuilder().Build(),
 		NodeDisruption: nodedisruptionv1alpha1.NodeDisruption{
+			Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+				Type: "maintenance",
+			},
 			Status: nodedisruptionv1alpha1.NodeDisruptionStatus{
 				DisruptedNodes: nodes,
 			},
@@ -180,17 +203,19 @@ func TestValidateWithBudgetConstraintsFailAtHealth(t *testing.T) {
 	}
 
 	budget1 := MockBudget{
-		name:     nodedisruptionv1alpha1.NamespacedName{Namespace: "test1", Name: "test1"},
-		impacted: true,
-		tolerate: true,
-		health:   fmt.Errorf("testerror"),
+		name:           nodedisruptionv1alpha1.NamespacedName{Namespace: "test1", Name: "test1"},
+		impacted:       true,
+		tolerate:       true,
+		supportedTypes: []string{"maintenance"},
+		health:         fmt.Errorf("testerror"),
 	}
 
 	budget2 := MockBudget{
-		name:     nodedisruptionv1alpha1.NamespacedName{Namespace: "test2", Name: "test2"},
-		impacted: true,
-		tolerate: true,
-		health:   nil,
+		name:           nodedisruptionv1alpha1.NamespacedName{Namespace: "test2", Name: "test2"},
+		impacted:       true,
+		tolerate:       true,
+		supportedTypes: []string{"maintenance"},
+		health:         nil,
 	}
 
 	budgets := []controller.Budget{&budget1, &budget2}

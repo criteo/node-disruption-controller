@@ -41,10 +41,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+type NodeDisruptionBudgetConfig struct {
+	DefaultNodeDisruptionTypes []string
+}
+
 // NodeDisruptionBudgetReconciler reconciles a NodeDisruptionBudget object
 type NodeDisruptionBudgetReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	Config NodeDisruptionBudgetConfig
 }
 
 //+kubebuilder:rbac:groups=nodedisruption.criteo.com,resources=nodedisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
@@ -77,6 +82,13 @@ func (r *NodeDisruptionBudgetReconciler) Reconcile(ctx context.Context, req ctrl
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
+	}
+
+	if len(ndb.Spec.SupportedNodeDisruptionTypes) == 0 && len(r.Config.DefaultNodeDisruptionTypes) > 0 {
+		ndb.Spec.SupportedNodeDisruptionTypes = r.Config.DefaultNodeDisruptionTypes
+		if err := r.Update(ctx, ndb); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	UpdateNDBMetrics(ref, ndb)
@@ -231,6 +243,10 @@ func (r *NodeDisruptionBudgetResolver) GetNamespacedName() nodedisruptionv1alpha
 		Name:      r.NodeDisruptionBudget.Name,
 		Kind:      r.NodeDisruptionBudget.Kind,
 	}
+}
+
+func (r *NodeDisruptionBudgetResolver) GetSupportedDisruptionTypes() []string {
+	return r.NodeDisruptionBudget.Spec.SupportedNodeDisruptionTypes
 }
 
 func (r *NodeDisruptionBudgetResolver) GetSelectedNodes(ctx context.Context) (resolver.NodeSet, error) {
