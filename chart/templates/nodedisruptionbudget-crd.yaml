@@ -65,8 +65,8 @@ spec:
                   nodes selected by selectors are unavailable after the disruption.
                 type: integer
               nodeSelector:
-                description: NodeSelector query over pods whose nodes are managed by
-                  the disruption budget.
+                description: NodeSelector query over pods whose nodes are managed
+                  by the disruption budget.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -94,11 +94,13 @@ spec:
                           items:
                             type: string
                           type: array
+                          x-kubernetes-list-type: atomic
                       required:
                       - key
                       - operator
                       type: object
                     type: array
+                    x-kubernetes-list-type: atomic
                   matchLabels:
                     additionalProperties:
                       type: string
@@ -109,6 +111,14 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              supportedNodeDisruptionTypes:
+                description: |-
+                  SupportedNodeDisruptionTypes is the list of node disruption types that this budget supports.
+                  When set, this budget will only be considered during reconciliation of NodeDisruptions whose type
+                  is in this list. When empty, the controller's default node disruption types are used.
+                items:
+                  type: string
+                type: array
             required:
             - maxDisruptedNodes
             - minUndisruptedNodes
