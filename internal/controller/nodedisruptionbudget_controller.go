@@ -176,6 +176,12 @@ type NodeDisruptionBudgetResolver struct {
 	Resolver             resolver.Resolver
 }
 
+func computeNodeDisruptionBudgetDisruptionsAllowed(maxDisruptedNodes, minUndisruptedNodes, watchedNodes, currentDisruptions int) int {
+	disruptionsForMax := maxDisruptedNodes - currentDisruptions
+	disruptionsForMin := (watchedNodes - currentDisruptions) - minUndisruptedNodes
+	return int(math.Min(float64(disruptionsForMax), float64(disruptionsForMin)))
+}
+
 // Sync ensure the budget's status is up to date
 func (r *NodeDisruptionBudgetResolver) Sync(ctx context.Context) error {
 	nodeNames, err := r.GetSelectedNodes(ctx)
@@ -192,9 +198,12 @@ func (r *NodeDisruptionBudgetResolver) Sync(ctx context.Context) error {
 
 	r.NodeDisruptionBudget.Status.WatchedNodes = nodes
 	r.NodeDisruptionBudget.Status.CurrentDisruptions = disruptionCount
-	disruptionsForMax := r.NodeDisruptionBudget.Spec.MaxDisruptedNodes - disruptionCount
-	disruptionsForMin := (len(nodes) - disruptionCount) - r.NodeDisruptionBudget.Spec.MinUndisruptedNodes
-	r.NodeDisruptionBudget.Status.DisruptionsAllowed = int(math.Min(float64(disruptionsForMax), float64(disruptionsForMin))) - disruptionCount
+	r.NodeDisruptionBudget.Status.DisruptionsAllowed = computeNodeDisruptionBudgetDisruptionsAllowed(
+		r.NodeDisruptionBudget.Spec.MaxDisruptedNodes,
+		r.NodeDisruptionBudget.Spec.MinUndisruptedNodes,
+		len(nodes),
+		disruptionCount,
+	)
 	r.NodeDisruptionBudget.Status.Disruptions = disruptions
 	return nil
 }
