@@ -54,55 +54,13 @@ type ClientOption func(*runtime.ClientOperation)
 
 // ClientService is the interface for Client methods
 type ClientService interface {
-	CancelPreparation(params *CancelPreparationParams, opts ...ClientOption) (*CancelPreparationOK, error)
-
 	CheckReadiness(params *CheckReadinessParams, opts ...ClientOption) (*CheckReadinessOK, error)
+
+	CloseDisruption(params *CloseDisruptionParams, opts ...ClientOption) (*CloseDisruptionOK, error)
 
 	PrepareApplication(params *PrepareApplicationParams, opts ...ClientOption) (*PrepareApplicationOK, error)
 
 	SetTransport(transport runtime.ClientTransport)
-}
-
-/*
-CancelPreparation cancels application preparation for a disruption
-*/
-func (a *Client) CancelPreparation(params *CancelPreparationParams, opts ...ClientOption) (*CancelPreparationOK, error) {
-	// NOTE: parameters are not validated before sending
-	if params == nil {
-		params = NewCancelPreparationParams()
-	}
-	op := &runtime.ClientOperation{
-		ID:                 "cancelPreparation",
-		Method:             "POST",
-		PathPattern:        "/cancel",
-		ProducesMediaTypes: []string{"application/json"},
-		ConsumesMediaTypes: []string{"application/json"},
-		Schemes:            []string{"https"},
-		Params:             params,
-		Reader:             &CancelPreparationReader{formats: a.formats},
-		Context:            params.Context,
-		Client:             params.HTTPClient,
-	}
-	for _, opt := range opts {
-		opt(op)
-	}
-	result, err := a.transport.Submit(op)
-	if err != nil {
-		return nil, err
-	}
-
-	// only one success response has to be checked
-	success, ok := result.(*CancelPreparationOK)
-	if ok {
-		return success, nil
-	}
-
-	// unexpected success response.
-	//
-	// a default response is provided: fill this and return an error
-	unexpectedSuccess := result.(*CancelPreparationDefault)
-
-	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
 }
 
 /*
@@ -143,6 +101,48 @@ func (a *Client) CheckReadiness(params *CheckReadinessParams, opts ...ClientOpti
 	//
 	// a default response is provided: fill this and return an error
 	unexpectedSuccess := result.(*CheckReadinessDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
+CloseDisruption notifies the end of a disruption if the application needs to unprepare
+*/
+func (a *Client) CloseDisruption(params *CloseDisruptionParams, opts ...ClientOption) (*CloseDisruptionOK, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewCloseDisruptionParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "closeDisruption",
+		Method:             "POST",
+		PathPattern:        "/close",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"https"},
+		Params:             params,
+		Reader:             &CloseDisruptionReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*CloseDisruptionOK)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*CloseDisruptionDefault)
 
 	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
 }

@@ -101,8 +101,10 @@ type NodeDisruptionStatus struct {
 type DisruptedBudgetStatus struct {
 	Reference NamespacedName `json:"reference,omitempty"`
 	Reason    string         `json:"reason"`
-	Preparing bool           `json:"preparing"`
-	Ok        bool           `json:"ok"`
+	// Preparing is set to true when the application manager started preparation. Value is kept true even when the app is ready.
+	Preparing bool `json:"preparing"`
+	// Ok is set to true when application manager preparation is complete and ready for the NodeDisruption to continue.
+	Ok bool `json:"ok"`
 }
 
 //+kubebuilder:object:root=true

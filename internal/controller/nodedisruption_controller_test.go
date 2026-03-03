@@ -30,6 +30,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	errorsk8s "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -58,6 +59,16 @@ func clearAllNodeDisruptionResources() {
 
 	_ = k8sClient.DeleteAllOf(context.Background(), &nodedisruptionv1alpha1.NodeDisruptionBudget{})
 	_ = k8sClient.DeleteAllOf(context.Background(), &nodedisruptionv1alpha1.NodeDisruption{})
+
+	// NodeDisruption deletion is now finalizer-driven; wait for full removal to avoid test races.
+	Eventually(func() int {
+		nds := &nodedisruptionv1alpha1.NodeDisruptionList{}
+		err := k8sClient.List(context.Background(), nds)
+		if err != nil {
+			return -1
+		}
+		return len(nds.Items)
+	}, 10*time.Second, 100*time.Millisecond).Should(Equal(0))
 
 }
 
@@ -237,14 +248,14 @@ var _ = Describe("NodeDisruption controller", func() {
 			})
 
 			When("using v2 hook workflow", func() {
-				It("calls the prepare and ready hooks before granting disruption", func() {
+				It("calls the prepare and ready hooks before granting disruption, then close on deletion", func() {
 					mockBasePath := "/api/v2"
 
 					dis := appmgr.Disruption{}
 					By("Starting an http server to receive the hook")
 					prepareCalledCnt := 0
 					readyCalledCnt := 0
-					cancelCalledCnt := 0
+					closeCalledCnt := 0
 
 					checkHookFn := func(w http.ResponseWriter, req *http.Request) {
 						switch req.URL.Path {
@@ -252,8 +263,8 @@ var _ = Describe("NodeDisruption controller", func() {
 							prepareCalledCnt++
 						case mockBasePath + "/ready":
 							readyCalledCnt++
-						case mockBasePath + "/cancel":
-							cancelCalledCnt++
+						case mockBasePath + "/close":
+							closeCalledCnt++
 						}
 						err := json.NewDecoder(req.Body).Decode(&dis)
 						Expect(err).Should(Succeed())
@@ -325,12 +336,29 @@ var _ = Describe("NodeDisruption controller", func() {
 
 					By("ensure the disrupted node selector is correct")
 					Expect(createdDisruption.Status.DisruptedNodes).Should(Equal([]string{"node1", "node2"}))
+					Expect(createdDisruption.Finalizers).Should(ContainElement(FinalizerName))
+					Expect(createdDisruption.Status.DisruptedDisruptionBudgets).Should(HaveLen(1))
+					Expect(createdDisruption.Status.DisruptedDisruptionBudgets[0].Preparing).Should(BeTrue())
 
 					By("checking that the v2 hooks are properly called")
 					Expect(prepareCalledCnt).Should(Equal(1))
 					Expect(readyCalledCnt).Should(Equal(1))
-					Expect(cancelCalledCnt).Should(Equal(0))
+					Expect(closeCalledCnt).Should(Equal(0))
 					Expect(dis.Name).Should(Equal(NDName))
+
+					By("deleting the NodeDisruption")
+					Expect(k8sClient.Delete(ctx, createdDisruption.DeepCopy())).Should(Succeed())
+
+					By("calling the close hook through finalizer")
+					Eventually(func() int {
+						return closeCalledCnt
+					}, timeout, interval).Should(Equal(1))
+
+					By("removing the NodeDisruption after close propagation")
+					Eventually(func() bool {
+						err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+						return errorsk8s.IsNotFound(err)
+					}, timeout, interval).Should(BeTrue())
 				})
 			})
 

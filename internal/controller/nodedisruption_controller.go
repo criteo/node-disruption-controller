@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -35,6 +36,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -42,6 +44,7 @@ import (
 const (
 	DefaultRetryInterval     = time.Minute
 	DefaultHealthHookTimeout = time.Minute
+	FinalizerName            = "criteo.com/close-propagation"
 )
 
 type NodeDisruptionReconcilerConfig struct {
@@ -80,7 +83,6 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	nd := &nodedisruptionv1alpha1.NodeDisruption{}
 	err := r.Get(ctx, req.NamespacedName, nd)
-
 	if err != nil {
 		if errors.IsNotFound(err) {
 			PruneNodeDisruptionMetrics(req.Name)
@@ -89,6 +91,22 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		return clusterResult, err
 	}
+
+	reconciler := &SingleNodeDisruptionReconciler{
+		NodeDisruption: *nd.DeepCopy(),
+		Client:         r.Client,
+		Resolver:       resolver.Resolver{Client: r.Client},
+		Config:         r.Config,
+	}
+	continueReconcile, err := r.handleFinalizer(ctx, nd, reconciler)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	// We do not continue if we are following a deletion or we updated the object which retriggers an event.
+	if !continueReconcile {
+		return ctrl.Result{}, nil
+	}
+
 	logger.Info("Updating metrics")
 	UpdateNodeDisruptionMetrics(nd)
 
@@ -97,13 +115,6 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		logger.Info("Time not elapsed, retry later", "currentDate", time.Now(), "retryDate", nd.Status.NextRetryDate.Time)
 		clusterResult.RequeueAfter = time.Until(nd.Status.NextRetryDate.Time)
 		return clusterResult, nil
-	}
-
-	reconciler := SingleNodeDisruptionReconciler{
-		NodeDisruption: *nd.DeepCopy(),
-		Client:         r.Client,
-		Resolver:       resolver.Resolver{Client: r.Client},
-		Config:         r.Config,
 	}
 
 	err = reconciler.Reconcile(ctx)
@@ -117,6 +128,38 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	logger.Info("Reconciliation successful", "state", reconciler.NodeDisruption.Status.State)
 	return clusterResult, nil
+}
+
+func (r *NodeDisruptionReconciler) handleFinalizer(ctx context.Context, nd *nodedisruptionv1alpha1.NodeDisruption, sndr *SingleNodeDisruptionReconciler) (bool, error) {
+	// If not under deletion make sure to add our finalizer.
+	if nd.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(nd, FinalizerName) {
+			return true, nil
+		}
+
+		controllerutil.AddFinalizer(nd, FinalizerName)
+		if err := r.Update(ctx, nd); err != nil {
+			return false, err
+		}
+		return false, nil // No error, but do not continue reconciliation, update triggers an event of itself.
+	}
+
+	if controllerutil.ContainsFinalizer(nd, FinalizerName) {
+		// Disruption is being deleted, call all close hooks for all impacted budgets.
+		if err := sndr.closeAllImpactedBudgets(ctx); err != nil {
+			return false, err
+		}
+
+		// remove our finalizer from the list and update it.
+		if controllerutil.RemoveFinalizer(nd, FinalizerName) {
+			if err := r.Update(ctx, nd); err != nil {
+				return false, err
+			}
+		}
+	}
+
+	// Stop reconciliation as the item is being deleted and we already handled the cleanup.
+	return false, nil
 }
 
 // PruneNodeDisruptionMetric remove metrics for a Node Disruption that don't exist anymore
@@ -275,6 +318,55 @@ func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Co
 	ndr.NodeDisruption.Status.DisruptedDisruptionBudgets = statuses
 	ndr.NodeDisruption.Status.State = state
 	ndr.NodeDisruption.Status.NextRetryDate = nextRetryDate
+
+	return nil
+}
+
+// closeAllImpactedBudgets notify for all impacted budgets the associated application managers that the node disruption has ended.
+func (ndr *SingleNodeDisruptionReconciler) closeAllImpactedBudgets(ctx context.Context) error {
+	logger := log.FromContext(ctx)
+
+	anyFailed := false
+	for _, budgetStatus := range ndr.NodeDisruption.Status.DisruptedDisruptionBudgets {
+		if !budgetStatus.Preparing { // Will be preparing if "preparing" or "ready". If false means it is refused and nothing has been started.
+			continue
+		}
+
+		// Only ApplicationDisruptionBudget can handle close notifications
+		if budgetStatus.Reference.Kind != "ApplicationDisruptionBudget" {
+			continue
+		}
+
+		refStr := budgetStatus.Reference.Namespace + "/" + budgetStatus.Reference.Name
+		adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
+		if err := ndr.Client.Get(ctx, client.ObjectKey{Namespace: budgetStatus.Reference.Namespace, Name: budgetStatus.Reference.Name}, adb); err != nil {
+			if errors.IsNotFound(err) {
+				logger.Info("budget has been deleted, skipping close hook", "budget", refStr)
+				continue
+			}
+			anyFailed = true
+			logger.Error(err, "failed to get budget", "budget", refStr)
+			continue
+		}
+
+		budgetResolver := &ApplicationDisruptionBudgetResolver{
+			ApplicationDisruptionBudget: adb,
+			Client:                      ndr.Client,
+			Resolver:                    ndr.Resolver,
+		}
+
+		if !budgetResolver.V2HooksReady() {
+			continue
+		}
+
+		if err := budgetResolver.CallCloseHook(ctx, ndr.NodeDisruption, 10*time.Second); err != nil {
+			logger.Error(err, "failed to call close hook", "budget", refStr)
+			anyFailed = true
+		}
+	}
+	if anyFailed {
+		return stderrors.New("failed to close all budgets")
+	}
 
 	return nil
 }
