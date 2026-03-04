@@ -128,10 +128,10 @@ paths:
           $ref: '#/responses/RetryAfter'
         default: 
           $ref: '#/responses/UnexpectedError'
-  /cancel:
+  /close:
     post:
-      summary: Cancel application preparation for a disruption.
-      operationId: cancelPreparation
+      summary: Notify the end of a disruption if the application needs to unprepare.
+      operationId: closeDisruption
       tags:
         - disruption
       consumes:

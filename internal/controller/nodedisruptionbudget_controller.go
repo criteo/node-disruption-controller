@@ -224,7 +224,7 @@ func (r *NodeDisruptionBudgetResolver) CallReadyHook(ctx context.Context, nd nod
 	return nil
 }
 
-func (r *NodeDisruptionBudgetResolver) CallCancelHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+func (r *NodeDisruptionBudgetResolver) CallCloseHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
 	return nil
 }
 
