@@ -44,7 +44,7 @@ import (
 const (
 	DefaultRetryInterval     = time.Minute
 	DefaultHealthHookTimeout = time.Minute
-	FinalizerName            = "node-disruption-controller/close-propagation"
+	FinalizerName            = "node-disruption-controller/terminate-propagation"
 )
 
 type NodeDisruptionReconcilerConfig struct {
@@ -145,8 +145,8 @@ func (r *NodeDisruptionReconciler) handleFinalizer(ctx context.Context, nd *node
 	}
 
 	if controllerutil.ContainsFinalizer(nd, FinalizerName) {
-		// Disruption is being deleted, call all close hooks for all impacted budgets.
-		if err := sndr.closeAllImpactedBudgets(ctx); err != nil {
+		// Disruption is being deleted, call all terminate hooks for all impacted budgets.
+		if err := sndr.terminateAllImpactedBudgets(ctx); err != nil {
 			return false, err
 		}
 
@@ -322,8 +322,8 @@ func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Co
 	return nil
 }
 
-// closeAllImpactedBudgets notify for all impacted budgets the associated application managers that the node disruption has ended.
-func (ndr *SingleNodeDisruptionReconciler) closeAllImpactedBudgets(ctx context.Context) error {
+// terminateAllImpactedBudgets notify for all impacted budgets the associated application managers that the node disruption has ended.
+func (ndr *SingleNodeDisruptionReconciler) terminateAllImpactedBudgets(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
 	anyFailed := false
@@ -332,7 +332,7 @@ func (ndr *SingleNodeDisruptionReconciler) closeAllImpactedBudgets(ctx context.C
 			continue
 		}
 
-		// Only ApplicationDisruptionBudget can handle close notifications
+		// Only ApplicationDisruptionBudget can handle terminate notifications
 		if budgetStatus.Reference.Kind != "ApplicationDisruptionBudget" {
 			continue
 		}
@@ -341,7 +341,7 @@ func (ndr *SingleNodeDisruptionReconciler) closeAllImpactedBudgets(ctx context.C
 		adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
 		if err := ndr.Client.Get(ctx, client.ObjectKey{Namespace: budgetStatus.Reference.Namespace, Name: budgetStatus.Reference.Name}, adb); err != nil {
 			if errors.IsNotFound(err) {
-				logger.Info("budget has been deleted, skipping close hook", "budget", refStr)
+				logger.Info("budget has been deleted, skipping terminate hook", "budget", refStr)
 				continue
 			}
 			anyFailed = true
@@ -359,13 +359,13 @@ func (ndr *SingleNodeDisruptionReconciler) closeAllImpactedBudgets(ctx context.C
 			continue
 		}
 
-		if err := budgetResolver.CallCloseHook(ctx, ndr.NodeDisruption, 10*time.Second); err != nil {
-			logger.Error(err, "failed to call close hook", "budget", refStr)
+		if err := budgetResolver.CallTerminateHook(ctx, ndr.NodeDisruption, 10*time.Second); err != nil {
+			logger.Error(err, "failed to call terminate hook", "budget", refStr)
 			anyFailed = true
 		}
 	}
 	if anyFailed {
-		return stderrors.New("failed to close all budgets")
+		return stderrors.New("failed to terminate all budgets")
 	}
 
 	return nil

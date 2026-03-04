@@ -44,7 +44,7 @@ type ApplicationDisruptionBudgetSpec struct {
 	// +kubebuilder:validation:Optional
 	HealthHook HookSpec `json:"healthHook,omitempty"`
 
-	// HookV2BasePath holds the base path for the prepare, ready, cancel hooks that will be
+	// HookV2BasePath holds the base path for the prepare, ready, terminate hooks that will be
 	// called at different stages of the NodeDisruption lifecycle.
 	// A POST http request containing a Disruption that is being reconciled is sent ot each of the hooks.
 	// +kubebuilder:validation:Optional

@@ -128,10 +128,10 @@ paths:
           $ref: '#/responses/RetryAfter'
         default: 
           $ref: '#/responses/UnexpectedError'
-  /close:
+  /terminate:
     post:
       summary: Notify the end of a disruption if the application needs to unprepare.
-      operationId: closeDisruption
+      operationId: terminateDisruption
       tags:
         - disruption
       consumes:

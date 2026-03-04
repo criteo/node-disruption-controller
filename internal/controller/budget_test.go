@@ -49,7 +49,7 @@ func (m *MockBudget) CallReadyHook(context.Context, nodedisruptionv1alpha1.NodeD
 	return nil
 }
 
-func (m *MockBudget) CallCloseHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error {
+func (m *MockBudget) CallTerminateHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error {
 	return nil
 }
 

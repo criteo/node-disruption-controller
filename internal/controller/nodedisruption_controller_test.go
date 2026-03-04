@@ -263,7 +263,7 @@ var _ = Describe("NodeDisruption controller", func() {
 							prepareCalledCnt++
 						case mockBasePath + "/ready":
 							readyCalledCnt++
-						case mockBasePath + "/close":
+						case mockBasePath + "/terminate":
 							closeCalledCnt++
 						}
 						err := json.NewDecoder(req.Body).Decode(&dis)
@@ -349,7 +349,7 @@ var _ = Describe("NodeDisruption controller", func() {
 					By("deleting the NodeDisruption")
 					Expect(k8sClient.Delete(ctx, createdDisruption.DeepCopy())).Should(Succeed())
 
-					By("calling the close hook through finalizer")
+					By("calling the terminate hook through finalizer")
 					Eventually(func() int {
 						return closeCalledCnt
 					}, timeout, interval).Should(Equal(1))
