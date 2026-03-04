@@ -44,7 +44,7 @@ import (
 const (
 	DefaultRetryInterval     = time.Minute
 	DefaultHealthHookTimeout = time.Minute
-	FinalizerName            = "criteo.com/close-propagation"
+	FinalizerName            = "node-disruption-controller/close-propagation"
 )
 
 type NodeDisruptionReconcilerConfig struct {
