@@ -50,4 +50,4 @@ jobs:
         context: .
         file: ./Dockerfile.release
         push: true
-        tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/$(echo ${{ github.repository }} | cut -d'/' -f2):${{ github.ref_name }}
+        tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
