@@ -283,13 +283,13 @@ func (r *ApplicationDisruptionBudgetResolver) CallReadyHook(ctx context.Context,
 	return err
 }
 
-func (r *ApplicationDisruptionBudgetResolver) CallCloseHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+func (r *ApplicationDisruptionBudgetResolver) CallTerminateHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
 	svc, err := r.hookClient()
 	if err != nil {
 		return err
 	}
 
-	_, err = svc.CloseDisruption(&disruption.CloseDisruptionParams{
+	_, err = svc.TerminateDisruption(&disruption.TerminateDisruptionParams{
 		Body:       r.hookBody(nd),
 		HTTPClient: &http.Client{Timeout: timeout},
 	})

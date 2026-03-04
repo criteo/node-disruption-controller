@@ -17,14 +17,14 @@ type Budget interface {
 	IsImpacted(resolver.NodeSet) bool
 	// Return the number of disruption allowed considering a list of current node disruptions
 	TolerateDisruption(resolver.NodeSet) bool
-	// Return true if the budget has v2 hooks configured (for prepare, ready, close)
+	// Return true if the budget has v2 hooks configured (for prepare, ready, terminate)
 	V2HooksReady() bool
 	// Call the prepare hook to trigger the preparation of the application for disruption
 	CallPrepareHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error
 	// Call the ready hook to validate that the application is ready for disruption
 	CallReadyHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error
-	// Call the close hook to close any disruption
-	CallCloseHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error
+	// Call the terminate hook to terminate any disruption
+	CallTerminateHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error
 	// Call a lifecycle hook in order to synchronously validate a Node Disruption
 	CallHealthHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error
 	// Apply the budget's status to Kubernetes
