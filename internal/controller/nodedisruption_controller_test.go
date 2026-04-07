@@ -571,6 +571,69 @@ var _ = Describe("NodeDisruption controller", func() {
 						return createdDisruption.Status.State
 					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Granted))
 				})
+
+				It("keeps the node disruption pending until doNotGrantBefore", func() {
+					doNotGrantBefore := metav1.NewTime(time.Now().Add(time.Hour))
+
+					By("creating a new NodeDisruption with doNotGrantBefore in the future")
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruption",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      NDName,
+							Namespace: NDNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector:     metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:             "maintenance",
+							DoNotGrantBefore: doNotGrantBefore,
+							Retry: nodedisruptionv1alpha1.RetrySpec{
+								Enabled: true,
+							},
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					By("checking the NodeDisruption stays pending and retries at doNotGrantBefore")
+					createdDisruption := &nodedisruptionv1alpha1.NodeDisruption{}
+					Eventually(func(g Gomega) {
+						err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(createdDisruption.Status.State).To(Equal(nodedisruptionv1alpha1.Pending))
+						g.Expect(createdDisruption.Status.NextRetryDate.Time).To(Equal(doNotGrantBefore.Time))
+					}, timeout, interval).Should(Succeed())
+				})
+
+				It("grants the node disruption when doNotGrantBefore is in the past", func() {
+					By("creating a new NodeDisruption with doNotGrantBefore in the past")
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruption",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      NDName,
+							Namespace: NDNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector:     metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:             "maintenance",
+							DoNotGrantBefore: metav1.NewTime(time.Now().Add(-time.Minute)),
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					By("checking the NodeDisruption is still granted")
+					Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+						err := k8sClient.Get(ctx, NDLookupKey, disruption)
+						if err != nil {
+							panic("should be able to get")
+						}
+						return disruption.Status.State
+					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Granted))
+				})
 			})
 
 			When("a node disruption's deadline is in the past", func() {
