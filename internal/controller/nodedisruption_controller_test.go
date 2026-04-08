@@ -573,7 +573,8 @@ var _ = Describe("NodeDisruption controller", func() {
 				})
 
 				It("keeps the node disruption pending until doNotGrantBefore", func() {
-					doNotGrantBefore := metav1.NewTime(time.Now().Add(time.Hour))
+					// Kubernetes drops sub-second precision when persisting metav1.Time values.
+					doNotGrantBefore := metav1.NewTime(time.Now().Add(time.Hour).Truncate(time.Second))
 
 					By("creating a new NodeDisruption with doNotGrantBefore in the future")
 					disruption := &nodedisruptionv1alpha1.NodeDisruption{
