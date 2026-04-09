@@ -53,6 +53,9 @@ type NodeDisruptionSpec struct {
 	// StartDate when the disruption should start
 	StartDate metav1.Time `json:"startDate,omitempty"`
 
+	// DoNotGrantBefore prevents the disruption from being granted before the specified time
+	DoNotGrantBefore metav1.Time `json:"doNotGrantBefore,omitempty"`
+
 	// Duration of the disruption once granted
 	Duration metav1.Duration `json:"duration,omitempty"`
 

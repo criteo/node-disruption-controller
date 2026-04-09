@@ -111,6 +111,10 @@ spec:
                 description: StartDate when the disruption should start
                 format: date-time
                 type: string
+              doNotGrantBefore:
+                description: DoNotGrantBefore prevents the disruption from being granted before the specified time
+                format: date-time
+                type: string
               type:
                 description: Type of the node disruption
                 type: string

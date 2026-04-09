@@ -272,10 +272,15 @@ func (ndr *SingleNodeDisruptionReconciler) getRetryDate() metav1.Time {
 	return metav1.NewTime(retryDate)
 }
 
+func (ndr *SingleNodeDisruptionReconciler) getDoNotGrantBeforeDate() metav1.Time {
+	return ndr.NodeDisruption.Spec.DoNotGrantBefore
+}
+
 // tryTransitionToGranted attempt to transition to the granted state but can result in either pending or rejected
 func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Context) (err error) {
-	nextRetryDate := ndr.getRetryDate()
 	logger := log.FromContext(ctx)
+	doNotGrantBefore := ndr.getDoNotGrantBeforeDate()
+	nextRetryDate := ndr.getRetryDate()
 
 	var state nodedisruptionv1alpha1.NodeDisruptionState
 
@@ -294,7 +299,13 @@ func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Co
 	}
 
 	if !anyFailed {
-		state = nodedisruptionv1alpha1.Granted
+		if !doNotGrantBefore.IsZero() && time.Now().Before(doNotGrantBefore.Time) {
+			logger.Info("Grant deferred until doNotGrantBefore", "doNotGrantBefore", doNotGrantBefore.Time)
+			state = nodedisruptionv1alpha1.Pending
+			nextRetryDate = doNotGrantBefore
+		} else {
+			state = nodedisruptionv1alpha1.Granted
+		}
 	} else {
 		if !nextRetryDate.IsZero() {
 			state = nodedisruptionv1alpha1.Pending
