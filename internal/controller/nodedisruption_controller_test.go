@@ -360,6 +360,92 @@ var _ = Describe("NodeDisruption controller", func() {
 						return errorsk8s.IsNotFound(err)
 					}, timeout, interval).Should(BeTrue())
 				})
+
+				It("runs prepare and ready hooks before doNotGrantBefore while keeping the disruption pending", func() {
+					mockBasePath := "/api/v2"
+
+					By("Starting an http server to receive the hook")
+					prepareCalledCnt := 0
+					readyCalledCnt := 0
+
+					checkHookFn := func(w http.ResponseWriter, req *http.Request) {
+						switch req.URL.Path {
+						case mockBasePath + "/prepare":
+							prepareCalledCnt++
+						case mockBasePath + "/ready":
+							readyCalledCnt++
+						}
+						Expect(req.Header.Get("Content-Type")).Should(Equal("application/json"))
+						w.WriteHeader(http.StatusOK)
+					}
+
+					mockServer := startDummyHTTPServer(checkHookFn)
+					defer mockServer.Close()
+
+					By("creating a budget that accepts one disruption")
+					adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "ApplicationDisruptionBudget",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test-do-not-grant-before",
+							Namespace: "default",
+						},
+						Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+							PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+							MaxDisruptions: 1,
+							HookV2BasePath: nodedisruptionv1alpha1.HookSpec{
+								URL: mockServer.URL + mockBasePath,
+							},
+						},
+					}
+					Expect(k8sClient.Create(ctx, adb)).Should(Succeed())
+
+					By("checking the ApplicationDisruptionBudget is synchronized")
+					ADBLookupKey := types.NamespacedName{Name: "test-do-not-grant-before", Namespace: "default"}
+					createdADB := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
+					Eventually(func() []string {
+						err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
+						Expect(err).Should(Succeed())
+						return createdADB.Status.WatchedNodes
+					}, timeout, interval).Should(Equal([]string{"node1"}))
+
+					By("creating a new NodeDisruption with doNotGrantBefore in the future")
+					doNotGrantBefore := metav1.NewTime(time.Now().Add(time.Hour).Truncate(time.Second))
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruption",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      NDName,
+							Namespace: NDNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector:     metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:             "maintenance",
+							DoNotGrantBefore: doNotGrantBefore,
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					NDLookupKey := types.NamespacedName{Name: NDName, Namespace: NDNamespace}
+					createdDisruption := &nodedisruptionv1alpha1.NodeDisruption{}
+
+					By("checking the NodeDisruption stays pending after the hooks have completed")
+					Eventually(func(g Gomega) {
+						err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(createdDisruption.Status.State).To(Equal(nodedisruptionv1alpha1.Pending))
+						g.Expect(createdDisruption.Status.NextRetryDate.Time).To(Equal(doNotGrantBefore.Time))
+						g.Expect(createdDisruption.Status.DisruptedDisruptionBudgets).To(HaveLen(1))
+						g.Expect(createdDisruption.Status.DisruptedDisruptionBudgets[0].Preparing).To(BeTrue())
+						g.Expect(createdDisruption.Status.DisruptedDisruptionBudgets[0].Ok).To(BeTrue())
+						g.Expect(prepareCalledCnt).To(Equal(1))
+						g.Expect(readyCalledCnt).To(Equal(1))
+					}, timeout, interval).Should(Succeed())
+				})
 			})
 
 			When("there are no budgets in the cluster", func() {
