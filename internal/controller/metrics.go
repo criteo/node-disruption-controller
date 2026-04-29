@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
@@ -8,10 +10,36 @@ import (
 
 const (
 	METIC_PREFIX = "node_disruption_controller_"
+
+	NodeDisruptionReconcileController = "NodeDisruption"
+
+	ReconcileResultSuccess = "success"
+	ReconcileResultError   = "error"
 )
 
 var (
 	// NODE DISRUPTION METRICS
+	NodeDisruptionReconcileTotal = promauto.With(metrics.Registry).NewCounterVec(
+		prometheus.CounterOpts{
+			Name: METIC_PREFIX + "reconcile_total",
+			Help: "Total number of node disruption controller reconciliations by result",
+		},
+		[]string{"controller", "result"},
+	)
+	NodeDisruptionLastSuccessfulReconcileTimestamp = promauto.With(metrics.Registry).NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: METIC_PREFIX + "last_successful_reconcile_timestamp_seconds",
+			Help: "Unix timestamp of the last successful node disruption controller reconciliation",
+		},
+		[]string{"controller"},
+	)
+	NodeDisruptionLastFailedReconcileTimestamp = promauto.With(metrics.Registry).NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: METIC_PREFIX + "last_failed_reconcile_timestamp_seconds",
+			Help: "Unix timestamp of the last failed node disruption controller reconciliation",
+		},
+		[]string{"controller"},
+	)
 	NodeDisruptionGrantedTotal = promauto.With(metrics.Registry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: METIC_PREFIX + "node_disruption_granted_total",
@@ -147,3 +175,14 @@ var (
 		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind", "node_disruption_name"},
 	)
 )
+
+func ObserveNodeDisruptionReconcile(result string) {
+	NodeDisruptionReconcileTotal.WithLabelValues(NodeDisruptionReconcileController, result).Inc()
+	now := float64(time.Now().Unix())
+	switch result {
+	case ReconcileResultSuccess:
+		NodeDisruptionLastSuccessfulReconcileTimestamp.WithLabelValues(NodeDisruptionReconcileController).Set(now)
+	case ReconcileResultError:
+		NodeDisruptionLastFailedReconcileTimestamp.WithLabelValues(NodeDisruptionReconcileController).Set(now)
+	}
+}

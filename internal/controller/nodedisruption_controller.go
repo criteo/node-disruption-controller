@@ -76,13 +76,19 @@ type NodeDisruptionReconciler struct {
 // move the current state of the cluster closer to the desired state.
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
-func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (clusterResult ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 
-	clusterResult := ctrl.Result{}
+	defer func() {
+		if err != nil {
+			ObserveNodeDisruptionReconcile(ReconcileResultError)
+			return
+		}
+		ObserveNodeDisruptionReconcile(ReconcileResultSuccess)
+	}()
 
 	nd := &nodedisruptionv1alpha1.NodeDisruption{}
-	err := r.Get(ctx, req.NamespacedName, nd)
+	err = r.Get(ctx, req.NamespacedName, nd)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			PruneNodeDisruptionMetrics(req.Name)
@@ -119,12 +125,16 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	err = reconciler.Reconcile(ctx)
 	if err != nil {
-		return clusterResult, nil
+		return clusterResult, err
 	}
 
 	if !reflect.DeepEqual(nd.Status, reconciler.NodeDisruption.Status) {
 		logger.Info("Updating Status, done with", "state", reconciler.NodeDisruption.Status.State)
-		return clusterResult, reconciler.UpdateStatus(ctx)
+		err = reconciler.UpdateStatus(ctx)
+		if err != nil {
+			return clusterResult, err
+		}
+		return clusterResult, nil
 	}
 	logger.Info("Reconciliation successful", "state", reconciler.NodeDisruption.Status.State)
 	return clusterResult, nil
