@@ -124,7 +124,14 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if !reflect.DeepEqual(nd.Status, reconciler.NodeDisruption.Status) {
 		logger.Info("Updating Status, done with", "state", reconciler.NodeDisruption.Status.State)
-		return clusterResult, reconciler.UpdateStatus(ctx)
+		if err := reconciler.UpdateStatus(ctx); err != nil {
+			if errors.IsNotFound(err) {
+				logger.Info("NodeDisruption was deleted before status update, skipping", "error", err)
+				return clusterResult, nil
+			}
+			return clusterResult, err
+		}
+		return clusterResult, nil
 	}
 	logger.Info("Reconciliation successful", "state", reconciler.NodeDisruption.Status.State)
 	return clusterResult, nil
