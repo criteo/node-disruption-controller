@@ -23,20 +23,26 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"testing"
 	"time"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
 	"github.com/criteo/node-disruption-controller/internal/appmgr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	errorsk8s "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 // +kubebuilder:docs-gen:collapse=Imports
@@ -1159,3 +1165,57 @@ var _ = Describe("NodeDisruption controller", func() {
 		})
 	})
 })
+
+// TestReconcile_DoesNotErrorOnNotFoundStatusUpdate verifies that when the
+// NodeDisruption is removed between Reconcile's Get and the status update
+// (e.g., the object's finalizer was removed and it was deleted from etcd),
+// Reconcile swallows the resulting NotFound error instead of bubbling it up to
+// the controller-runtime workqueue (which would log it as a Reconciler error
+// and trigger an unnecessary requeue).
+func TestReconcile_DoesNotErrorOnNotFoundStatusUpdate(t *testing.T) {
+	s := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(s))
+	require.NoError(t, nodedisruptionv1alpha1.AddToScheme(s))
+
+	nd := &nodedisruptionv1alpha1.NodeDisruption{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "vanishing-nd",
+			Namespace:  "default",
+			Finalizers: []string{FinalizerName},
+		},
+		Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+			NodeSelector: metav1.LabelSelector{},
+			Type:         "maintenance",
+		},
+	}
+
+	notFound := errorsk8s.NewNotFound(
+		nodedisruptionv1alpha1.GroupVersion.WithResource("nodedisruptions").GroupResource(),
+		nd.Name,
+	)
+
+	c := fake.NewClientBuilder().
+		WithScheme(s).
+		WithObjects(nd).
+		WithStatusSubresource(&nodedisruptionv1alpha1.NodeDisruption{}).
+		WithInterceptorFuncs(interceptor.Funcs{
+			SubResourceUpdate: func(_ context.Context, _ client.Client, subResourceName string, _ client.Object, _ ...client.SubResourceUpdateOption) error {
+				if subResourceName == "status" {
+					return notFound
+				}
+				return nil
+			},
+		}).
+		Build()
+
+	r := &NodeDisruptionReconciler{
+		Client: c,
+		Scheme: s,
+		Config: NodeDisruptionReconcilerConfig{RetryInterval: time.Second},
+	}
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: nd.Name, Namespace: nd.Namespace},
+	})
+	assert.NoError(t, err, "NotFound on status update must be swallowed by Reconcile")
+}
