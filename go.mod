@@ -10,6 +10,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
 	github.com/stretchr/testify v1.11.1
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	k8s.io/api v0.34.2
 	k8s.io/apimachinery v0.34.2
 	k8s.io/client-go v0.34.2
