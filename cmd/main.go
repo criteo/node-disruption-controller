@@ -69,6 +69,9 @@ func main() {
 	var defaultNodeDisruptionTypesRaw string
 	var logConsole bool
 	var logPath string
+	var logMaxSize int
+	var logMaxBackups int
+	var logCompress bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -82,6 +85,9 @@ func main() {
 	flag.StringVar(&defaultNodeDisruptionTypesRaw, "default-node-disruption-types", "", "The default list of node disruption types for ADBs that don't specify supportedNodeDisruptionTypes. Must be a subset of --node-disruption-types.")
 	flag.BoolVar(&logConsole, "log-console", true, "Write logs to the console (stderr)")
 	flag.StringVar(&logPath, "log-path", "", "Write logs to file at path")
+	flag.IntVar(&logMaxSize, "log-max-size", 10, "Maximum size of log file when written to disk, in MB")
+	flag.IntVar(&logMaxBackups, "log-max-backups", 1, "Number of historical log files to keep when written to disk")
+	flag.BoolVar(&logCompress, "log-compress", false, "Compress rotated logs when written to disk")
 
 	opts := zap.Options{
 		Development: true,
@@ -89,7 +95,7 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	opts.DestWriter = logOutput(logPath, logConsole)
+	opts.DestWriter = logOutput(logConsole, logPath, logMaxSize, logMaxBackups, logCompress)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -184,16 +190,16 @@ func main() {
 	}
 }
 
-func logOutput(logPath string, logConsole bool) io.Writer {
+func logOutput(logConsole bool, logPath string, logMaxSize, logMaxBackups int, logCompress bool) io.Writer {
 	if logPath == "" {
 		return nil // When not set, defaults to console (stderr) anyway.
 	}
 
 	w := &lumberjack.Logger{
 		Filename:   logPath,
-		MaxSize:    10,
-		MaxBackups: 1,
-		Compress:   false, // disabled by default
+		MaxSize:    logMaxSize,
+		MaxBackups: logMaxBackups,
+		Compress:   logCompress,
 	}
 	if logConsole {
 		return zapcore.NewMultiWriteSyncer(
