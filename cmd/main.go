@@ -19,14 +19,18 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+
+	"go.uber.org/zap/zapcore"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"gopkg.in/natefinch/lumberjack.v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -63,6 +67,11 @@ func main() {
 	var healthHookTimeout time.Duration
 	var nodeDisruptionTypesRaw string
 	var defaultNodeDisruptionTypesRaw string
+	var logConsole bool
+	var logPath string
+	var logMaxSize int
+	var logMaxBackups int
+	var logCompress bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -74,6 +83,11 @@ func main() {
 	flag.DurationVar(&healthHookTimeout, "healthhook-timeout", controller.DefaultHealthHookTimeout, "HTTP client timeout for calling HealthHook resolved from ADB")
 	flag.StringVar(&nodeDisruptionTypesRaw, "node-disruption-types", "", "The list of types allowed for a node disruption separated by a comma.")
 	flag.StringVar(&defaultNodeDisruptionTypesRaw, "default-node-disruption-types", "", "The default list of node disruption types for ADBs that don't specify supportedNodeDisruptionTypes. Must be a subset of --node-disruption-types.")
+	flag.BoolVar(&logConsole, "log-console", true, "Write logs to the console (stderr)")
+	flag.StringVar(&logPath, "log-path", "", "Write logs to file at path")
+	flag.IntVar(&logMaxSize, "log-max-size", 10, "Maximum size of log file when written to disk, in MB")
+	flag.IntVar(&logMaxBackups, "log-max-backups", 1, "Number of historical log files to keep when written to disk")
+	flag.BoolVar(&logCompress, "log-compress", false, "Compress rotated logs when written to disk")
 
 	opts := zap.Options{
 		Development: true,
@@ -81,6 +95,7 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
+	opts.DestWriter = logOutput(logConsole, logPath, logMaxSize, logMaxBackups, logCompress)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -173,4 +188,23 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func logOutput(logConsole bool, logPath string, logMaxSize, logMaxBackups int, logCompress bool) io.Writer {
+	if logPath == "" {
+		return nil // When not set, defaults to console (stderr) anyway.
+	}
+
+	w := &lumberjack.Logger{
+		Filename:   logPath,
+		MaxSize:    logMaxSize,
+		MaxBackups: logMaxBackups,
+		Compress:   logCompress,
+	}
+	if logConsole {
+		return zapcore.NewMultiWriteSyncer(
+			zapcore.AddSync(w),
+			zapcore.AddSync(os.Stderr))
+	}
+	return w
 }
