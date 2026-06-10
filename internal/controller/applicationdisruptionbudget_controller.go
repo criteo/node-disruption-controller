@@ -33,6 +33,7 @@ import (
 	"github.com/criteo/node-disruption-controller/internal/appmgrcli/disruption"
 	"github.com/criteo/node-disruption-controller/pkg/resolver"
 
+	openapiruntime "github.com/go-openapi/runtime"
 	httptransport "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
 	"github.com/prometheus/client_golang/prometheus"
@@ -251,12 +252,19 @@ func (r *ApplicationDisruptionBudgetResolver) CallPrepareHook(ctx context.Contex
 		return err
 	}
 
+	statusCode := 200
+	defer func() {
+		DisruptionBudgetCheckPrepareHookStatusCodeTotal.WithLabelValues(r.ApplicationDisruptionBudget.Namespace, r.ApplicationDisruptionBudget.Name, r.ApplicationDisruptionBudget.Kind, strconv.Itoa(statusCode)).Inc()
+	}()
 	_, err = svc.PrepareApplication(&disruption.PrepareApplicationParams{
 		Body:       r.hookBody(nd),
 		HTTPClient: &http.Client{Timeout: timeout},
 	})
 	if err == nil {
 		return nil
+	}
+	if e, ok := err.(*openapiruntime.APIError); ok {
+		statusCode = e.Code
 	}
 	if e, ok := err.(*disruption.PrepareApplicationStatus425); ok {
 		return fmt.Errorf("retry later, in %v seconds", e.RetryAfter)
@@ -270,12 +278,19 @@ func (r *ApplicationDisruptionBudgetResolver) CallReadyHook(ctx context.Context,
 		return err
 	}
 
+	statusCode := 200
+	defer func() {
+		DisruptionBudgetCheckReadyHookStatusCodeTotal.WithLabelValues(r.ApplicationDisruptionBudget.Namespace, r.ApplicationDisruptionBudget.Name, r.ApplicationDisruptionBudget.Kind, strconv.Itoa(statusCode)).Inc()
+	}()
 	_, err = svc.CheckReadiness(&disruption.CheckReadinessParams{
 		Body:       r.hookBody(nd),
 		HTTPClient: &http.Client{Timeout: timeout},
 	})
 	if err == nil {
 		return nil
+	}
+	if e, ok := err.(*openapiruntime.APIError); ok {
+		statusCode = e.Code
 	}
 	if e, ok := err.(*disruption.CheckReadinessStatus425); ok {
 		return fmt.Errorf("retry later, in %v seconds", e.RetryAfter)
@@ -289,10 +304,17 @@ func (r *ApplicationDisruptionBudgetResolver) CallTerminateHook(ctx context.Cont
 		return err
 	}
 
+	statusCode := 200
+	defer func() {
+		DisruptionBudgetCheckTerminateHookStatusCodeTotal.WithLabelValues(r.ApplicationDisruptionBudget.Namespace, r.ApplicationDisruptionBudget.Name, r.ApplicationDisruptionBudget.Kind, strconv.Itoa(statusCode)).Inc()
+	}()
 	_, err = svc.TerminateDisruption(&disruption.TerminateDisruptionParams{
 		Body:       r.hookBody(nd),
 		HTTPClient: &http.Client{Timeout: timeout},
 	})
+	if e, ok := err.(*openapiruntime.APIError); ok {
+		statusCode = e.Code
+	}
 	return err
 }
 

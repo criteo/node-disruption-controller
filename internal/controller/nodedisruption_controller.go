@@ -508,7 +508,7 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 				Ok:        false,
 			}
 			statuses = append(statuses, status)
-			DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
+			DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, ndr.NodeDisruption.Spec.Type).Inc()
 			break
 		}
 		impactedBudgets = append(impactedBudgets, budget)
@@ -551,6 +551,7 @@ func (ndr *SingleNodeDisruptionReconciler) v2HookCheck(ctx context.Context, budg
 	if !currentStatus.Ok && !currentStatus.Preparing {
 		if err := budget.CallPrepareHook(ctx, ndr.NodeDisruption, ndr.Config.HealthHookTimeout); err != nil {
 			logger.Error(err, "failed to call prepare hook")
+			DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, ndr.NodeDisruption.Spec.Type).Inc()
 			return nodedisruptionv1alpha1.DisruptedBudgetStatus{
 				Reference: ref,
 				Reason:    fmt.Sprintf("cannot prepare disruption: %s", err),
@@ -574,6 +575,8 @@ func (ndr *SingleNodeDisruptionReconciler) v2HookCheck(ctx context.Context, budg
 			}
 		}
 	}
+
+	DisruptionBudgetGrantedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, ndr.NodeDisruption.Spec.Type).Inc()
 	return nodedisruptionv1alpha1.DisruptedBudgetStatus{
 		Reference: ref,
 		Ok:        true,
@@ -590,10 +593,10 @@ func (ndr *SingleNodeDisruptionReconciler) legacyHookCheck(ctx context.Context, 
 			Reason:    fmt.Sprintf("Unhealthy: %s", err),
 			Ok:        false,
 		}
-		DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
+		DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, ndr.NodeDisruption.Spec.Type).Inc()
 		return status
 	}
-	DisruptionBudgetGrantedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Inc()
+	DisruptionBudgetGrantedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, ndr.NodeDisruption.Spec.Type).Inc()
 	return nodedisruptionv1alpha1.DisruptedBudgetStatus{
 		Reference: budget.GetNamespacedName(),
 		Reason:    "",

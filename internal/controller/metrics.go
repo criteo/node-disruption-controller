@@ -76,6 +76,28 @@ var (
 		},
 		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind", "status_code"},
 	)
+	// V2 Hooks
+	DisruptionBudgetCheckPrepareHookStatusCodeTotal = promauto.With(metrics.Registry).NewCounterVec(
+		prometheus.CounterOpts{
+			Name: METIC_PREFIX + "disruption_budget_prepare_hook_status_code_total",
+			Help: "Total number of request by HTTP status code",
+		},
+		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind", "status_code"},
+	)
+	DisruptionBudgetCheckReadyHookStatusCodeTotal = promauto.With(metrics.Registry).NewCounterVec(
+		prometheus.CounterOpts{
+			Name: METIC_PREFIX + "disruption_budget_ready_hook_status_code_total",
+			Help: "Total number of request by HTTP status code",
+		},
+		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind", "status_code"},
+	)
+	DisruptionBudgetCheckTerminateHookStatusCodeTotal = promauto.With(metrics.Registry).NewCounterVec(
+		prometheus.CounterOpts{
+			Name: METIC_PREFIX + "disruption_budget_terminate_hook_status_code_total",
+			Help: "Total number of request by HTTP status code",
+		},
+		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind", "status_code"},
+	)
 	DisruptionBudgetCheckHealthHookErrorTotal = promauto.With(metrics.Registry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: METIC_PREFIX + "disruption_budget_health_hook_error_total",
@@ -88,14 +110,14 @@ var (
 			Name: METIC_PREFIX + "disruption_budget_rejected_total",
 			Help: "Total number of rejected node disruption by the disruption budget",
 		},
-		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind"},
+		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind", "type"},
 	)
 	DisruptionBudgetGrantedTotal = promauto.With(metrics.Registry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: METIC_PREFIX + "disruption_budget_granted_total",
 			Help: "Total number of granted node disruption by the disruption budget",
 		},
-		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind"},
+		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind", "type"},
 	)
 	DisruptionBudgetMaxDisruptions = promauto.With(metrics.Registry).NewGaugeVec(
 		prometheus.GaugeOpts{
