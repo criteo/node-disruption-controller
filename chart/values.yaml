@@ -1,4 +1,6 @@
 controllerManager:
+  annotations: {}
+  labels: {}
   serviceMonitor:
     enabled: false
   kubeRbacProxy:
@@ -43,10 +45,13 @@ controllerManager:
       requests:
         cpu: 10m
         memory: 64Mi
+    volumeMounts: []
+  extraContainers: []
+  volumes: []
   replicas: 1
   serviceAccount:
     annotations: {}
-  tolerations: {}
+  tolerations: []
 kubernetesClusterDomain: cluster.local
 metricsService:
   ports:
