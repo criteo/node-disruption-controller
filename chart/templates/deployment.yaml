@@ -19,8 +19,14 @@ spec:
       labels:
         control-plane: controller-manager
       {{- include "chart.selectorLabels" . | nindent 8 }}
+      {{- with .Values.controllerManager.labels }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       annotations:
         kubectl.kubernetes.io/default-container: manager
+      {{- with .Values.controllerManager.annotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
       containers:
       - args: {{- toYaml .Values.controllerManager.kubeRbacProxy.args | nindent 8 }}
@@ -64,10 +70,21 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
+        {{- with .Values.controllerManager.manager.volumeMounts }}
+        volumeMounts:
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         resources: {{- toYaml .Values.controllerManager.manager.resources | nindent 10
           }}
         securityContext: {{- toYaml .Values.controllerManager.manager.containerSecurityContext
           | nindent 10 }}
+    {{- with .Values.controllerManager.extraContainers }}
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.controllerManager.volumes }}
+      volumes:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
       securityContext:
         runAsNonRoot: true
       serviceAccountName: {{ include "chart.fullname" . }}-controller-manager
