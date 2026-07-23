@@ -860,6 +860,139 @@ var _ = Describe("NodeDisruption controller", func() {
 				})
 			})
 
+			When("an application is preparing and the deadline is reached", func() {
+				It("rejects the node disruption instead of keeping it pending", func() {
+					mockBasePath := "/api/v2"
+
+					By("Starting an http server where prepare succeeds but the app never becomes ready")
+					prepareCalledCnt := 0
+					readyCalledCnt := 0
+					terminateCalledCnt := 0
+					hookFn := func(w http.ResponseWriter, req *http.Request) {
+						switch req.URL.Path {
+						case mockBasePath + "/prepare":
+							prepareCalledCnt++
+							w.WriteHeader(http.StatusOK)
+						case mockBasePath + "/ready":
+							readyCalledCnt++
+							// Application is still preparing: ask the controller to retry later.
+							w.Header().Set("Retry-After", "1")
+							w.WriteHeader(http.StatusTooEarly)
+						case mockBasePath + "/terminate":
+							terminateCalledCnt++
+							w.WriteHeader(http.StatusOK)
+						default:
+							w.WriteHeader(http.StatusOK)
+						}
+					}
+					mockServer := startDummyHTTPServer(hookFn)
+					defer mockServer.Close()
+
+					By("creating a budget that accepts one disruption with a v2 hook")
+					adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "ApplicationDisruptionBudget",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test",
+							Namespace: "default",
+						},
+						Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+							PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+							MaxDisruptions: 1,
+							HookV2BasePath: nodedisruptionv1alpha1.HookSpec{
+								URL: mockServer.URL + mockBasePath,
+							},
+						},
+					}
+					Expect(k8sClient.Create(ctx, adb)).Should(Succeed())
+
+					By("checking the ApplicationDisruptionBudget is synchronized")
+					ADBLookupKey := types.NamespacedName{Name: "test", Namespace: "default"}
+					createdADB := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
+					Eventually(func() []string {
+						err := k8sClient.Get(ctx, ADBLookupKey, createdADB)
+						Expect(err).Should(Succeed())
+						return createdADB.Status.WatchedNodes
+					}, timeout, interval).Should(Equal([]string{"node1"}))
+
+					By("creating a new NodeDisruption with retry enabled and a deadline in the future")
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruption",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      NDName,
+							Namespace: NDNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:         "maintenance",
+							Retry: nodedisruptionv1alpha1.RetrySpec{
+								Enabled: true,
+								// Deadline is 1m in the future
+								Deadline: metav1.Time{Time: time.Now().Add(time.Minute)},
+							},
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption.DeepCopy())).Should(Succeed())
+
+					By("staying Pending while the application is preparing and the deadline is not reached")
+					createdDisruption := &nodedisruptionv1alpha1.NodeDisruption{}
+					Eventually(func(g Gomega) {
+						g.Expect(k8sClient.Get(ctx, NDLookupKey, createdDisruption)).Should(Succeed())
+						g.Expect(createdDisruption.Status.State).To(Equal(nodedisruptionv1alpha1.Pending))
+						g.Expect(createdDisruption.Status.NextRetryDate.IsZero()).To(BeFalse())
+						g.Expect(createdDisruption.Status.DisruptedDisruptionBudgets).To(HaveLen(1))
+						g.Expect(createdDisruption.Status.DisruptedDisruptionBudgets[0].Preparing).To(BeTrue())
+						g.Expect(createdDisruption.Status.DisruptedDisruptionBudgets[0].Ok).To(BeFalse())
+					}, timeout, interval).Should(Succeed())
+					Expect(prepareCalledCnt).Should(BeNumerically(">=", 1))
+
+					By("polling the ready hook on retry while the app stays not-ready and the disruption stays Pending")
+					Eventually(func(g Gomega) {
+						g.Expect(k8sClient.Get(ctx, NDLookupKey, createdDisruption)).Should(Succeed())
+						g.Expect(readyCalledCnt).To(BeNumerically(">=", 1))
+						g.Expect(createdDisruption.Status.State).To(Equal(nodedisruptionv1alpha1.Pending))
+					}, timeout, interval).Should(Succeed())
+
+					By("forcing the deadline to be reached while the application is still preparing")
+					Expect(k8sClient.Get(ctx, NDLookupKey, createdDisruption)).Should(Succeed())
+					createdDisruption.Spec.Retry.Deadline = metav1.Time{Time: time.Now().Add(-time.Minute)}
+					Expect(k8sClient.Update(ctx, createdDisruption.DeepCopy())).Should(Succeed())
+
+					By("switching to Rejected instead of staying Pending forever")
+					Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+						err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+						if err != nil {
+							panic("should be able to get")
+						}
+						return createdDisruption.Status.State
+					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Rejected))
+
+					By("keeping the budget marked as preparing so the app can still be terminated")
+					Expect(createdDisruption.Status.DisruptedDisruptionBudgets).Should(ContainElement(And(
+						HaveField("Reference.Kind", "ApplicationDisruptionBudget"),
+						HaveField("Preparing", true),
+					)))
+
+					By("still calling the terminate hook on deletion even though the deadline was reached")
+					Expect(terminateCalledCnt).Should(Equal(0))
+					Expect(k8sClient.Delete(ctx, createdDisruption.DeepCopy())).Should(Succeed())
+					Eventually(func() int {
+						return terminateCalledCnt
+					}, timeout, interval).Should(BeNumerically(">=", 1))
+
+					By("removing the NodeDisruption after terminate propagation")
+					Eventually(func() bool {
+						err := k8sClient.Get(ctx, NDLookupKey, createdDisruption)
+						return errorsk8s.IsNotFound(err)
+					}, timeout, interval).Should(BeTrue())
+				})
+			})
+
 			When("there is an ADB that does not support the node disruption type", func() {
 				It("ignores the budget and grants the disruption", func() {
 					By("creating a budget that rejects everything but only supports maintenance1 type")
