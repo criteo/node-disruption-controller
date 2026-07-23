@@ -325,7 +325,10 @@ func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Co
 					logger.Info("Disruption rejected", "status", status)
 				}
 			}
-			if anyPreparing >= 0 {
+			// Even if application are preparing themselve for disruption, if the deadline has been reached
+			// We need to force Reject the maintenance for Tacamo to delete the ND and triggers the /terminate endpoint.
+			// Otherwise if an application keep staying in preparing stage, ND will never end and never be deleted.
+			if anyPreparing >= 0 && !ndr.NodeDisruption.Spec.Retry.IsAfterDeadline() {
 				state = nodedisruptionv1alpha1.Pending
 			} else {
 				state = nodedisruptionv1alpha1.Rejected
