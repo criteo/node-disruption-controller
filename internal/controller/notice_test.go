@@ -1,9 +1,12 @@
 package controller
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	nodedisruptionv1alpha1 "github.com/criteo/node-disruption-controller/api/v1alpha1"
@@ -64,4 +67,52 @@ func TestNoticeOpening(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNoticeDeferredCountedOncePerWait(t *testing.T) {
+	budget := &ApplicationDisruptionBudgetResolver{
+		ApplicationDisruptionBudget: &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "notice-counter", Name: "notice-counter"},
+			Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+				SupportedNodeDisruptionTypes: []string{"maintenance"},
+				NoticePeriod:                 &metav1.Duration{Duration: time.Hour},
+			},
+			Status: nodedisruptionv1alpha1.DisruptionBudgetStatus{
+				WatchedNodes:       []string{"node-0"},
+				DisruptionsAllowed: 1,
+			},
+		},
+	}
+	ndr := &SingleNodeDisruptionReconciler{
+		NodeDisruption: nodedisruptionv1alpha1.NodeDisruption{
+			Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+				Type:      "maintenance",
+				StartDate: metav1.NewTime(time.Now().Add(2 * time.Hour)),
+			},
+			Status: nodedisruptionv1alpha1.NodeDisruptionStatus{DisruptedNodes: []string{"node-0"}},
+		},
+	}
+	ref := budget.GetNamespacedName()
+	counter := DisruptionBudgetNoticeDeferredTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, "maintenance")
+	before := counterValue(t, counter)
+
+	// Each pass reads the statuses written by the previous one, as a reconcile reads the ND.
+	var statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus
+	for range 3 {
+		_, statuses = ndr.ValidateWithBudgetConstraints(context.Background(), []Budget{budget}, statuses)
+		if len(statuses) != 1 || !statuses[0].Waiting {
+			t.Fatalf("budget should be waiting, got %+v", statuses)
+		}
+	}
+	if got := counterValue(t, counter) - before; got != 1 {
+		t.Fatalf("counter went up by %v over one wait, want 1", got)
+	}
+}
+
+func counterValue(t *testing.T, counter prometheus.Counter) float64 {
+	var m dto.Metric
+	if err := counter.Write(&m); err != nil {
+		t.Fatal(err)
+	}
+	return m.GetCounter().GetValue()
 }

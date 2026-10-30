@@ -594,7 +594,10 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 			log.FromContext(ctx).Info("budget waiting for notice period",
 				"budget", ref, "type", ndr.NodeDisruption.Spec.Type, "opensAt", *opening)
 			statuses = append(statuses, ndr.waitingStatus(budget, *opening))
-			DisruptionBudgetNoticeDeferredTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, ndr.NodeDisruption.Spec.Type).Inc()
+			// Count a wait once, when it starts, not on every pass.
+			if !currentStatus.Waiting {
+				DisruptionBudgetNoticeDeferredTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, ndr.NodeDisruption.Spec.Type).Inc()
+			}
 			if ndr.earliestNoticeOpening == nil || opening.Before(*ndr.earliestNoticeOpening) {
 				ndr.earliestNoticeOpening = opening
 			}
