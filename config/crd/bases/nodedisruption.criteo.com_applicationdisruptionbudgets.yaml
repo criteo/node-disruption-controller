@@ -89,6 +89,38 @@ spec:
                 description: A NodeDisruption is allowed if at most "maxDisruptions"
                   nodes selected by selectors are unavailable after the disruption.
                 type: integer
+              noticePeriod:
+                description: |-
+                  NoticePeriod is the notice this application wants before a disruption. Hooks for this
+                  budget are not called, and the disruption is not granted, before the disruption's
+                  spec.startDate − noticePeriod. A disruption without startDate is not deferred, nor is one
+                  with retry enabled whose retry deadline is at or before that time. Notice periods are
+                  whole hours, minutes and seconds, such as 30m or 1h30m.
+                pattern: ^([0-9]+(h|m|s))+$
+                type: string
+              noticePeriodOverrides:
+                description: NoticePeriodOverrides overrides NoticePeriod for specific
+                  disruption types.
+                items:
+                  description: TypedNoticePeriod is a notice period for a single node
+                    disruption type.
+                  properties:
+                    noticePeriod:
+                      description: NoticePeriod for disruptions of this type.
+                      pattern: ^([0-9]+(h|m|s))+$
+                      type: string
+                    type:
+                      description: Type is the node disruption type this notice period
+                        applies to.
+                      type: string
+                  required:
+                  - noticePeriod
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
               podSelector:
                 description: PodSelector query over pods whose nodes are managed by
                   the disruption budget.

@@ -33,6 +33,8 @@ type Budget interface {
 	GetNamespacedName() nodedisruptionv1alpha1.NamespacedName
 	// Get the list of supported node disruption types for this budget
 	GetSupportedDisruptionTypes() []string
+	// Get the notice period for the given disruption type (zero = call hooks immediately)
+	NoticePeriodFor(disruptionType string) time.Duration
 }
 
 // PruneBudgetMetrics remove metrics for a Disruption Budget that doesn't exist anymore
@@ -46,6 +48,7 @@ func PruneBudgetStatusMetrics(ref nodedisruptionv1alpha1.NamespacedName) {
 	DisruptionBudgetGrantedTotal.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
 	DisruptionBudgetCheckHealthHookStatusCodeTotal.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
 	DisruptionBudgetCheckHealthHookErrorTotal.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
+	DisruptionBudgetNoticeDeferredTotal.DeletePartialMatch(prometheus.Labels{"disruption_budget_namespace": ref.Namespace, "disruption_budget_name": ref.Name, "disruption_budget_kind": ref.Kind})
 }
 
 func UpdateBudgetStatusMetrics(ref nodedisruptionv1alpha1.NamespacedName, status nodedisruptionv1alpha1.DisruptionBudgetStatus) {

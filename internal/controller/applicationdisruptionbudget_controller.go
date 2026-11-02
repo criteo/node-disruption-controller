@@ -99,8 +99,9 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 	}
 
 	if len(adb.Spec.SupportedNodeDisruptionTypes) == 0 && len(r.Config.DefaultNodeDisruptionTypes) > 0 {
+		patch := client.MergeFromWithOptions(adb.DeepCopy(), client.MergeFromWithOptimisticLock{})
 		adb.Spec.SupportedNodeDisruptionTypes = r.Config.DefaultNodeDisruptionTypes
-		if err := r.Update(ctx, adb); err != nil {
+		if err := r.Patch(ctx, adb, patch); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -112,6 +113,7 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 		ApplicationDisruptionBudget: adb.DeepCopy(),
 		Client:                      r.Client,
 		Resolver:                    resolver.Resolver{Client: r.Client},
+		original:                    adb,
 	}
 
 	err = resolver.Sync(ctx)
@@ -192,6 +194,8 @@ type ApplicationDisruptionBudgetResolver struct {
 	Client                      client.Client
 	Resolver                    resolver.Resolver
 	hookCli                     disruption.ClientService
+	// ADB as read before Sync, base of the status patch
+	original *nodedisruptionv1alpha1.ApplicationDisruptionBudget
 }
 
 // Sync ensure the budget's status is up to date
@@ -227,7 +231,7 @@ func (r *ApplicationDisruptionBudgetResolver) TolerateDisruption(_ resolver.Node
 }
 
 func (r *ApplicationDisruptionBudgetResolver) UpdateStatus(ctx context.Context) error {
-	return r.Client.Status().Update(ctx, r.ApplicationDisruptionBudget.DeepCopy(), []client.SubResourceUpdateOption{}...)
+	return r.Client.Status().Patch(ctx, r.ApplicationDisruptionBudget.DeepCopy(), client.MergeFrom(r.original))
 }
 
 func (r *ApplicationDisruptionBudgetResolver) GetNamespacedName() nodedisruptionv1alpha1.NamespacedName {
@@ -240,6 +244,10 @@ func (r *ApplicationDisruptionBudgetResolver) GetNamespacedName() nodedisruption
 
 func (r *ApplicationDisruptionBudgetResolver) GetSupportedDisruptionTypes() []string {
 	return r.ApplicationDisruptionBudget.Spec.SupportedNodeDisruptionTypes
+}
+
+func (r *ApplicationDisruptionBudgetResolver) NoticePeriodFor(disruptionType string) time.Duration {
+	return r.ApplicationDisruptionBudget.Spec.NoticePeriodFor(disruptionType)
 }
 
 func (r *ApplicationDisruptionBudgetResolver) V2HooksReady() bool {

@@ -119,6 +119,13 @@ var (
 		},
 		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind", "type"},
 	)
+	DisruptionBudgetNoticeDeferredTotal = promauto.With(metrics.Registry).NewCounterVec(
+		prometheus.CounterOpts{
+			Name: METIC_PREFIX + "disruption_budget_notice_deferred_total",
+			Help: "Number of times a budget's hook calls were deferred because its notice period had not opened",
+		},
+		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind", "type"},
+	)
 	DisruptionBudgetMaxDisruptions = promauto.With(metrics.Registry).NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: METIC_PREFIX + "disruption_budget_max_disruptions",

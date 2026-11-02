@@ -104,6 +104,24 @@ Maintenance will proceed only if the endpoint responds 2XX.<br/>
         </td>
         <td>false</td>
       </tr><tr>
+        <td><b>noticePeriod</b></td>
+        <td>string</td>
+        <td>
+          NoticePeriod is the notice this application wants before a disruption. Hooks for this
+budget are not called, and the disruption is not granted, before the disruption's
+spec.startDate − noticePeriod. A disruption without startDate is not deferred, nor is one
+with retry enabled whose retry deadline is at or before that time. Notice periods are
+whole hours, minutes and seconds, such as 30m or 1h30m.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b><a href="#applicationdisruptionbudgetspecnoticeperiodoverridesindex">noticePeriodOverrides</a></b></td>
+        <td>[]object</td>
+        <td>
+          NoticePeriodOverrides overrides NoticePeriod for specific disruption types.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
         <td><b><a href="#applicationdisruptionbudgetspecpodselector">podSelector</a></b></td>
         <td>object</td>
         <td>
@@ -153,6 +171,40 @@ Maintenance will proceed only if the endpoint responds 2XX.
           URL that will be called by the hook, in standard URL form (`scheme://host:port/path`).<br/>
         </td>
         <td>false</td>
+      </tr></tbody>
+</table>
+
+
+### ApplicationDisruptionBudget.spec.noticePeriodOverrides[index]
+<sup><sup>[↩ Parent](#applicationdisruptionbudgetspec)</sup></sup>
+
+
+
+NoticePeriodOverrides overrides NoticePeriod for specific disruption types.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody><tr>
+        <td><b>type</b></td>
+        <td>string</td>
+        <td>
+          Type is the node disruption type this notice period applies to.<br/>
+        </td>
+        <td>true</td>
+      </tr><tr>
+        <td><b>noticePeriod</b></td>
+        <td>string</td>
+        <td>
+          NoticePeriod for disruptions of this type.<br/>
+        </td>
+        <td>true</td>
       </tr></tbody>
 </table>
 
@@ -973,6 +1025,13 @@ NodeDisruptionStatus defines the observed state of NodeDisruption (/!\ it is eve
         <td>object</td>
         <td>
           This is the same as types.NamespacedName but serialisable to JSON<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>waiting</b></td>
+        <td>boolean</td>
+        <td>
+          Waiting is set to true while the budget waits for its notice period: its hooks have not been called yet.<br/>
         </td>
         <td>false</td>
       </tr></tbody>

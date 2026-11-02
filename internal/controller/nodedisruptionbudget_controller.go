@@ -258,6 +258,10 @@ func (r *NodeDisruptionBudgetResolver) GetSupportedDisruptionTypes() []string {
 	return r.NodeDisruptionBudget.Spec.SupportedNodeDisruptionTypes
 }
 
+func (r *NodeDisruptionBudgetResolver) NoticePeriodFor(_ string) time.Duration {
+	return 0
+}
+
 func (r *NodeDisruptionBudgetResolver) GetSelectedNodes(ctx context.Context) (resolver.NodeSet, error) {
 	nodesFromPods, err := r.Resolver.GetNodeFromNodeSelector(ctx, r.NodeDisruptionBudget.Spec.NodeSelector)
 	if err != nil {

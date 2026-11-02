@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -451,6 +452,211 @@ var _ = Describe("NodeDisruption controller", func() {
 						g.Expect(prepareCalledCnt).To(Equal(1))
 						g.Expect(readyCalledCnt).To(Equal(1))
 					}, timeout, interval).Should(Succeed())
+				})
+			})
+
+			Context("with a budget declaring a notice period", func() {
+				type hookCalls struct{ prepare, ready, terminate atomic.Int32 }
+
+				startHookServer := func(readyStatus int) (*hookCalls, string) {
+					calls := &hookCalls{}
+					server := startDummyHTTPServer(func(w http.ResponseWriter, r *http.Request) {
+						switch r.URL.Path {
+						case "/api/v2/prepare":
+							calls.prepare.Add(1)
+						case "/api/v2/ready":
+							calls.ready.Add(1)
+							w.WriteHeader(readyStatus)
+							return
+						case "/api/v2/terminate":
+							calls.terminate.Add(1)
+						}
+						w.WriteHeader(http.StatusOK)
+					})
+					DeferCleanup(server.Close)
+					return calls, server.URL + "/api/v2"
+				}
+
+				createBudget := func(name, hookURL string, notice time.Duration) {
+					adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "ApplicationDisruptionBudget",
+						},
+						ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+						Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+							PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+							MaxDisruptions: 1,
+							HookV2BasePath: nodedisruptionv1alpha1.HookSpec{URL: hookURL},
+						},
+					}
+					if notice > 0 {
+						adb.Spec.NoticePeriod = &metav1.Duration{Duration: notice}
+					}
+					Expect(k8sClient.Create(ctx, adb)).Should(Succeed())
+					Eventually(func(g Gomega) []string {
+						g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(adb), adb)).Should(Succeed())
+						return adb.Status.WatchedNodes
+					}, timeout, interval).Should(Equal([]string{"node1"}))
+				}
+
+				createDisruption := func(name string, startDate metav1.Time, retry nodedisruptionv1alpha1.RetrySpec) types.NamespacedName {
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruption",
+						},
+						ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: NDNamespace},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:         "maintenance",
+							StartDate:    startDate,
+							Retry:        retry,
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption)).Should(Succeed())
+					return client.ObjectKeyFromObject(disruption)
+				}
+
+				getDisruption := func(g Gomega, key types.NamespacedName) *nodedisruptionv1alpha1.NodeDisruption {
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{}
+					g.Expect(k8sClient.Get(ctx, key, disruption)).Should(Succeed())
+					return disruption
+				}
+
+				setStartDate := func(key types.NamespacedName, startDate time.Time) {
+					disruption := getDisruption(Default, key)
+					patch := client.MergeFrom(disruption.DeepCopy())
+					disruption.Spec.StartDate = metav1.NewTime(startDate)
+					Expect(k8sClient.Patch(ctx, disruption, patch)).Should(Succeed())
+				}
+
+				It("waits for the opening without calling hooks, even with retry disabled", func() {
+					calls, hookURL := startHookServer(http.StatusOK)
+					createBudget("test-notice-wait", hookURL, time.Hour)
+
+					By("creating a NodeDisruption whose startDate puts the opening 1h out")
+					key := createDisruption("test-notice-wait", metav1.NewTime(time.Now().Add(2*time.Hour)), nodedisruptionv1alpha1.RetrySpec{
+						Enabled: false,
+					})
+
+					By("checking the budget is waiting for its notice period")
+					Eventually(func(g Gomega) {
+						statuses := getDisruption(g, key).Status.DisruptedDisruptionBudgets
+						g.Expect(statuses).Should(HaveLen(1))
+						g.Expect(statuses[0].Reason).Should(ContainSubstring("waiting for notice period"))
+						g.Expect(statuses[0].Waiting).Should(BeTrue())
+						g.Expect(statuses[0].Preparing).Should(BeFalse())
+					}, timeout, interval).Should(Succeed())
+
+					By("checking it stays pending without any hook call")
+					Consistently(func(g Gomega) {
+						g.Expect(getDisruption(g, key).Status.State).Should(Equal(nodedisruptionv1alpha1.Pending))
+						g.Expect(calls.prepare.Load()).Should(BeZero())
+					}, 2*time.Second, interval).Should(Succeed())
+				})
+
+				It("does not wait for an opening after the deadline", func() {
+					calls, hookURL := startHookServer(http.StatusOK)
+					createBudget("test-notice-after-deadline", hookURL, time.Hour)
+
+					By("creating a NodeDisruption whose opening, 1h out, is after its deadline")
+					key := createDisruption("test-notice-after-deadline", metav1.NewTime(time.Now().Add(2*time.Hour)), nodedisruptionv1alpha1.RetrySpec{
+						Enabled:  true,
+						Deadline: metav1.NewTime(time.Now().Add(30 * time.Minute)),
+					})
+
+					By("checking the budget is prepared right away and the disruption granted")
+					Eventually(func(g Gomega) {
+						g.Expect(getDisruption(g, key).Status.State).Should(Equal(nodedisruptionv1alpha1.Granted))
+					}, timeout, interval).Should(Succeed())
+					Expect(calls.prepare.Load()).Should(BeNumerically(">", 0))
+				})
+
+				It("takes a startDate pulled in during the wait into account", func() {
+					calls, hookURL := startHookServer(http.StatusOK)
+					createBudget("test-notice-pulled-in", hookURL, time.Hour)
+
+					By("creating a NodeDisruption whose startDate puts the opening 1h out")
+					key := createDisruption("test-notice-pulled-in", metav1.NewTime(time.Now().Add(2*time.Hour)), nodedisruptionv1alpha1.RetrySpec{
+						Enabled: true,
+					})
+					Eventually(func(g Gomega) {
+						statuses := getDisruption(g, key).Status.DisruptedDisruptionBudgets
+						g.Expect(statuses).Should(HaveLen(1))
+						g.Expect(statuses[0].Reason).Should(ContainSubstring("waiting for notice period"))
+						g.Expect(statuses[0].Waiting).Should(BeTrue())
+					}, timeout, interval).Should(Succeed())
+
+					By("pulling the startDate in so that the notice period is open")
+					setStartDate(key, time.Now().Add(time.Hour))
+
+					By("checking the budget is prepared and the disruption granted")
+					Eventually(func(g Gomega) {
+						g.Expect(getDisruption(g, key).Status.State).Should(Equal(nodedisruptionv1alpha1.Granted))
+					}, timeout, interval).Should(Succeed())
+					Expect(calls.prepare.Load()).Should(BeNumerically(">", 0))
+					statuses := getDisruption(Default, key).Status.DisruptedDisruptionBudgets
+					Expect(statuses).Should(HaveLen(1))
+					Expect(statuses[0].Preparing).Should(BeTrue())
+					Expect(statuses[0].Waiting).Should(BeFalse())
+				})
+
+				It("prepares a budget without notice while another waits", func() {
+					callsA, hookURLA := startHookServer(http.StatusOK)
+					callsB, hookURLB := startHookServer(http.StatusOK)
+					createBudget("test-notice-mixed-a", hookURLA, 0)
+					createBudget("test-notice-mixed-b", hookURLB, 2*time.Second)
+
+					By("creating a NodeDisruption starting in 6s, so that B opens in 4s")
+					key := createDisruption("test-notice-mixed", metav1.NewTime(time.Now().Add(6*time.Second)), nodedisruptionv1alpha1.RetrySpec{
+						Enabled:  true,
+						Deadline: metav1.NewTime(time.Now().Add(time.Hour)),
+					})
+
+					By("checking A is prepared while B waits")
+					Eventually(callsA.prepare.Load, timeout, interval).Should(BeNumerically(">", 0))
+					Expect(callsB.prepare.Load()).Should(BeZero())
+
+					By("checking the disruption is granted once B's notice period opens")
+					Eventually(func(g Gomega) {
+						g.Expect(getDisruption(g, key).Status.State).Should(Equal(nodedisruptionv1alpha1.Granted))
+					}, timeout, interval).Should(Succeed())
+					Expect(callsB.prepare.Load()).Should(BeNumerically(">", 0))
+				})
+
+				It("does not gate a preparing budget again when the startDate is pushed out", func() {
+					calls, hookURL := startHookServer(http.StatusTooEarly)
+					createBudget("test-notice-pushed-out", hookURL, time.Hour)
+
+					By("creating a NodeDisruption whose opening is already past")
+					key := createDisruption("test-notice-pushed-out", metav1.NewTime(time.Now().Add(30*time.Minute)), nodedisruptionv1alpha1.RetrySpec{
+						Enabled: true,
+					})
+
+					By("checking the budget is preparing and its readiness polled")
+					Eventually(func(g Gomega) {
+						statuses := getDisruption(g, key).Status.DisruptedDisruptionBudgets
+						g.Expect(statuses).Should(HaveLen(1))
+						g.Expect(statuses[0].Preparing).Should(BeTrue())
+						g.Expect(calls.ready.Load()).Should(BeNumerically(">", 0))
+					}, timeout, interval).Should(Succeed())
+
+					By("pushing the startDate out so that the opening is in the future again")
+					setStartDate(key, time.Now().Add(2*time.Hour))
+
+					By("checking the budget keeps preparing")
+					Consistently(func(g Gomega) {
+						statuses := getDisruption(g, key).Status.DisruptedDisruptionBudgets
+						g.Expect(statuses).Should(HaveLen(1))
+						g.Expect(statuses[0].Preparing).Should(BeTrue())
+						g.Expect(statuses[0].Reason).ShouldNot(ContainSubstring("waiting for notice period"))
+						g.Expect(statuses[0].Waiting).Should(BeFalse())
+					}, 2*time.Second, interval).Should(Succeed())
+
+					By("checking the terminate hook is called on deletion")
+					Expect(k8sClient.Delete(ctx, getDisruption(Default, key))).Should(Succeed())
+					Eventually(calls.terminate.Load, timeout, interval).Should(BeNumerically(">", 0))
 				})
 			})
 

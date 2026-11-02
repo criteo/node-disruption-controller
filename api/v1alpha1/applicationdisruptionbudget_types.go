@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
@@ -55,6 +57,46 @@ type ApplicationDisruptionBudgetSpec struct {
 	// is in this list. When empty, the controller's default node disruption types are used.
 	// +kubebuilder:validation:Optional
 	SupportedNodeDisruptionTypes []string `json:"supportedNodeDisruptionTypes,omitempty"`
+
+	// NoticePeriod is the notice this application wants before a disruption. Hooks for this
+	// budget are not called, and the disruption is not granted, before the disruption's
+	// spec.startDate − noticePeriod. A disruption without startDate is not deferred, nor is one
+	// with retry enabled whose retry deadline is at or before that time. Notice periods are
+	// whole hours, minutes and seconds, such as 30m or 1h30m.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=`^([0-9]+(h|m|s))+$`
+	NoticePeriod *metav1.Duration `json:"noticePeriod,omitempty"`
+
+	// NoticePeriodOverrides overrides NoticePeriod for specific disruption types.
+	// +kubebuilder:validation:Optional
+	// +listType=map
+	// +listMapKey=type
+	NoticePeriodOverrides []TypedNoticePeriod `json:"noticePeriodOverrides,omitempty"`
+}
+
+// TypedNoticePeriod is a notice period for a single node disruption type.
+type TypedNoticePeriod struct {
+	// Type is the node disruption type this notice period applies to.
+	Type string `json:"type"`
+	// NoticePeriod for disruptions of this type.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=`^([0-9]+(h|m|s))+$`
+	NoticePeriod metav1.Duration `json:"noticePeriod"`
+}
+
+// NoticePeriodFor returns the notice period for the given disruption type:
+// a matching override wins, else the budget-wide default, else zero.
+func (s *ApplicationDisruptionBudgetSpec) NoticePeriodFor(disruptionType string) time.Duration {
+	for _, override := range s.NoticePeriodOverrides {
+		if override.Type == disruptionType {
+			return override.NoticePeriod.Duration
+		}
+	}
+	if s.NoticePeriod == nil {
+		return 0
+	}
+	return s.NoticePeriod.Duration
 }
 
 type HookSpec struct {

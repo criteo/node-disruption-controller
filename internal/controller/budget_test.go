@@ -73,6 +73,10 @@ func (m *MockBudget) GetSupportedDisruptionTypes() []string {
 	return m.supportedTypes
 }
 
+func (m *MockBudget) NoticePeriodFor(_ string) time.Duration {
+	return 0
+}
+
 func TestValidateWithBudgetConstraintsNoImpactedBudget(t *testing.T) {
 	nodes := []string{"node-dummy-0", "node-dummy-1"}
 	reconciler := controller.SingleNodeDisruptionReconciler{
