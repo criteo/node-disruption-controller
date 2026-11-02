@@ -99,7 +99,7 @@ func (r *ApplicationDisruptionBudgetReconciler) Reconcile(ctx context.Context, r
 	}
 
 	if len(adb.Spec.SupportedNodeDisruptionTypes) == 0 && len(r.Config.DefaultNodeDisruptionTypes) > 0 {
-		patch := client.MergeFrom(adb.DeepCopy())
+		patch := client.MergeFromWithOptions(adb.DeepCopy(), client.MergeFromWithOptimisticLock{})
 		adb.Spec.SupportedNodeDisruptionTypes = r.Config.DefaultNodeDisruptionTypes
 		if err := r.Patch(ctx, adb, patch); err != nil {
 			return ctrl.Result{}, err
