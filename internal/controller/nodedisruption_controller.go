@@ -229,6 +229,10 @@ type SingleNodeDisruptionReconciler struct {
 	Client         client.Client
 	Resolver       resolver.Resolver
 	Config         NodeDisruptionReconcilerConfig
+	// earliestNoticeOpening is the soonest notice-period opening among waiting budgets,
+	// set by ValidateWithBudgetConstraints and consumed by tryTransitionToGranted within
+	// the same reconciliation (the reconciler is constructed fresh per reconcile).
+	earliestNoticeOpening *time.Time
 }
 
 // Perform reconciliation of a NodeDisruption
@@ -283,6 +287,55 @@ func (ndr *SingleNodeDisruptionReconciler) getDoNotGrantBeforeDate() metav1.Time
 	return ndr.NodeDisruption.Spec.DoNotGrantBefore
 }
 
+// noticeOpening returns the time before which the budget's hooks must not be called, or nil
+// when the budget has no notice for this disruption type, the disruption has no startDate,
+// the opening is past, or, with retry enabled, the opening is at or after the deadline: the
+// disruption would be rejected there without the hooks ever being called.
+func (ndr *SingleNodeDisruptionReconciler) noticeOpening(budget Budget, now time.Time) *time.Time {
+	notice := budget.NoticePeriodFor(ndr.NodeDisruption.Spec.Type)
+	if notice == 0 || ndr.NodeDisruption.Spec.StartDate.IsZero() {
+		return nil
+	}
+	opening := ndr.NodeDisruption.Spec.StartDate.Add(-notice)
+	retry := ndr.NodeDisruption.Spec.Retry
+	if retry.Enabled && !retry.Deadline.IsZero() && !opening.Before(retry.Deadline.Time) {
+		return nil
+	}
+	if now.Before(opening) {
+		return &opening
+	}
+	return nil
+}
+
+// pendingNoticeOpening is noticeOpening for a budget that has not started preparing yet:
+// the notice is consumed once it has.
+func (ndr *SingleNodeDisruptionReconciler) pendingNoticeOpening(budget Budget, currentStatus nodedisruptionv1alpha1.DisruptedBudgetStatus, now time.Time) *time.Time {
+	if currentStatus.Preparing || currentStatus.Ok {
+		return nil
+	}
+	return ndr.noticeOpening(budget, now)
+}
+
+// noticeRetryDate is the opening, or one retry interval from now if sooner, so that changes
+// to the disruption or its budgets during the wait are taken into account.
+func (ndr *SingleNodeDisruptionReconciler) noticeRetryDate(opening time.Time) metav1.Time {
+	retryDate := time.Now().Add(ndr.Config.RetryInterval)
+	if opening.Before(retryDate) {
+		return metav1.NewTime(opening)
+	}
+	return metav1.NewTime(retryDate)
+}
+
+func (ndr *SingleNodeDisruptionReconciler) waitingStatus(budget Budget, opening time.Time) nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	return nodedisruptionv1alpha1.DisruptedBudgetStatus{
+		Reference: budget.GetNamespacedName(),
+		Reason:    fmt.Sprintf("waiting for notice period (opens at %s)", opening.Format(time.RFC3339)),
+		Ok:        false,
+		Preparing: false,
+		Waiting:   true,
+	}
+}
+
 // tryTransitionToGranted attempt to transition to the granted state but can result in either pending or rejected
 func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Context) (err error) {
 	logger := log.FromContext(ctx)
@@ -306,7 +359,11 @@ func (ndr *SingleNodeDisruptionReconciler) tryTransitionToGranted(ctx context.Co
 	}
 
 	if !anyFailed {
-		if !doNotGrantBefore.IsZero() && time.Now().Before(doNotGrantBefore.Time) {
+		if ndr.earliestNoticeOpening != nil {
+			nextRetryDate = ndr.noticeRetryDate(*ndr.earliestNoticeOpening)
+			logger.Info("Budgets waiting for notice period", "retryDate", nextRetryDate.Time)
+			state = nodedisruptionv1alpha1.Pending
+		} else if !doNotGrantBefore.IsZero() && time.Now().Before(doNotGrantBefore.Time) {
 			logger.Info("Grant deferred until doNotGrantBefore", "doNotGrantBefore", doNotGrantBefore.Time)
 			state = nodedisruptionv1alpha1.Pending
 			nextRetryDate = doNotGrantBefore
@@ -491,6 +548,7 @@ func (ndr *SingleNodeDisruptionReconciler) budgetSupportsDisruptionType(budget B
 func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx context.Context, budgets []Budget, currentStatuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
 	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
 	anyFailed = false
+	ndr.earliestNoticeOpening = nil
 
 	impactedBudgets := []Budget{}
 	for _, budget := range budgets {
@@ -521,16 +579,32 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 		return anyFailed, statuses
 	}
 
+	now := time.Now()
 	for _, budget := range impactedBudgets {
-		if budget.V2HooksReady() {
-			idx := slices.IndexFunc(currentStatuses, func(s nodedisruptionv1alpha1.DisruptedBudgetStatus) bool {
-				return s.Reference == budget.GetNamespacedName()
-			})
-			st := nodedisruptionv1alpha1.DisruptedBudgetStatus{}
-			if idx > -1 {
-				st = currentStatuses[idx]
+		ref := budget.GetNamespacedName()
+		idx := slices.IndexFunc(currentStatuses, func(s nodedisruptionv1alpha1.DisruptedBudgetStatus) bool {
+			return s.Reference == ref
+		})
+		currentStatus := nodedisruptionv1alpha1.DisruptedBudgetStatus{}
+		if idx > -1 {
+			currentStatus = currentStatuses[idx]
+		}
+
+		if opening := ndr.pendingNoticeOpening(budget, currentStatus, now); opening != nil {
+			log.FromContext(ctx).Info("budget waiting for notice period",
+				"budget", ref, "type", ndr.NodeDisruption.Spec.Type, "opensAt", *opening)
+			statuses = append(statuses, ndr.waitingStatus(budget, *opening))
+			// Count a wait once, when it starts, not on every pass.
+			if !currentStatus.Waiting {
+				DisruptionBudgetNoticeDeferredTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, ndr.NodeDisruption.Spec.Type).Inc()
 			}
-			status := ndr.v2HookCheck(ctx, budget, st)
+			if ndr.earliestNoticeOpening == nil || opening.Before(*ndr.earliestNoticeOpening) {
+				ndr.earliestNoticeOpening = opening
+			}
+			continue
+		}
+		if budget.V2HooksReady() {
+			status := ndr.v2HookCheck(ctx, budget, currentStatus)
 			if !status.Ok {
 				anyFailed = true
 			}

@@ -108,6 +108,8 @@ type DisruptedBudgetStatus struct {
 	Preparing bool `json:"preparing"`
 	// Ok is set to true when application manager preparation is complete and ready for the NodeDisruption to continue.
 	Ok bool `json:"ok"`
+	// Waiting is set to true while the budget waits for its notice period: its hooks have not been called yet.
+	Waiting bool `json:"waiting,omitempty"`
 }
 
 //+kubebuilder:object:root=true
