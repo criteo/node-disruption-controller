@@ -165,7 +165,6 @@ func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSel
 	PVsToFetch := []string{}
 
 	for _, pvc := range PVCs.Items {
-
 		logger.Info("PVC status", "pvc_name", pvc.Name, "pvc_phase", pvc.Status.Phase)
 		if pvc.Status.Phase == corev1.ClaimBound {
 			PVsToFetch = append(PVsToFetch, pvc.Spec.VolumeName)
@@ -231,6 +230,10 @@ func (r *Resolver) GetNodesFromNamespacedPVCSelector(ctx context.Context, pvcSel
 }
 
 func (r *Resolver) GetNodeFromNodeSelector(ctx context.Context, nodeSelector metav1.LabelSelector) (NodeSet, error) {
+	return r.GetMatchingNodeFromNodeSelector(ctx, nodeSelector, nil)
+}
+
+func (r *Resolver) GetMatchingNodeFromNodeSelector(ctx context.Context, nodeSelector metav1.LabelSelector, matches func(*corev1.Node) bool) (NodeSet, error) {
 	nodeNames := set.New()
 	nodeSet := NodeSet{Nodes: nodeNames}
 
@@ -247,8 +250,10 @@ func (r *Resolver) GetNodeFromNodeSelector(ctx context.Context, nodeSelector met
 		return nodeSet, err
 	}
 
-	for _, node := range nodes.Items {
-		nodeNames.Insert(node.Name)
+	for i := range nodes.Items {
+		if matches == nil || matches(&nodes.Items[i]) {
+			nodeNames.Insert(nodes.Items[i].Name)
+		}
 	}
 	return nodeSet, nil
 }
