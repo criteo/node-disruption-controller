@@ -104,6 +104,15 @@ Maintenance will proceed only if the endpoint responds 2XX.<br/>
         </td>
         <td>false</td>
       </tr><tr>
+        <td><b><a href="#applicationdisruptionbudgetspechookv2basepath">hookV2BasePath</a></b></td>
+        <td>object</td>
+        <td>
+          HookV2BasePath holds the base path for the prepare, ready, terminate hooks that will be
+called at different stages of the NodeDisruption lifecycle.
+A POST http request containing a Disruption that is being reconciled is sent ot each of the hooks.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
         <td><b>noticePeriod</b></td>
         <td>string</td>
         <td>
@@ -133,6 +142,15 @@ whole hours, minutes and seconds, such as 30m or 1h30m.<br/>
         <td>object</td>
         <td>
           PVCSelector query over PVCs whose nodes are managed by the disruption budget.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>supportedNodeDisruptionTypes</b></td>
+        <td>[]string</td>
+        <td>
+          SupportedNodeDisruptionTypes is the list of node disruption types that this budget supports.
+When set, this budget will only be considered during reconciliation of NodeDisruptions whose type
+is in this list. When empty, the controller's default node disruption types are used.<br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -175,12 +193,14 @@ Maintenance will proceed only if the endpoint responds 2XX.
 </table>
 
 
-### ApplicationDisruptionBudget.spec.noticePeriodOverrides[index]
+### ApplicationDisruptionBudget.spec.hookV2BasePath
 <sup><sup>[↩ Parent](#applicationdisruptionbudgetspec)</sup></sup>
 
 
 
-NoticePeriodOverrides overrides NoticePeriod for specific disruption types.
+HookV2BasePath holds the base path for the prepare, ready, terminate hooks that will be
+called at different stages of the NodeDisruption lifecycle.
+A POST http request containing a Disruption that is being reconciled is sent ot each of the hooks.
 
 <table>
     <thead>
@@ -192,17 +212,51 @@ NoticePeriodOverrides overrides NoticePeriod for specific disruption types.
         </tr>
     </thead>
     <tbody><tr>
-        <td><b>type</b></td>
+        <td><b>caBundle</b></td>
         <td>string</td>
         <td>
-          Type is the node disruption type this notice period applies to.<br/>
+          a PEM encoded CA bundle which will be used to validate the webhook's server certificate. If unspecified, system trust roots on the apiserver are used.<br/>
         </td>
-        <td>true</td>
+        <td>false</td>
       </tr><tr>
+        <td><b>url</b></td>
+        <td>string</td>
+        <td>
+          URL that will be called by the hook, in standard URL form (`scheme://host:port/path`).<br/>
+        </td>
+        <td>false</td>
+      </tr></tbody>
+</table>
+
+
+### ApplicationDisruptionBudget.spec.noticePeriodOverrides[index]
+<sup><sup>[↩ Parent](#applicationdisruptionbudgetspec)</sup></sup>
+
+
+
+TypedNoticePeriod is a notice period for a single node disruption type.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody><tr>
         <td><b>noticePeriod</b></td>
         <td>string</td>
         <td>
           NoticePeriod for disruptions of this type.<br/>
+        </td>
+        <td>true</td>
+      </tr><tr>
+        <td><b>type</b></td>
+        <td>string</td>
+        <td>
+          Type is the node disruption type this notice period applies to.<br/>
         </td>
         <td>true</td>
       </tr></tbody>
@@ -507,7 +561,7 @@ NodeDisruptionBudget is the Schema for the nodedisruptionbudgets API
         <td><b><a href="#nodedisruptionbudgetstatus">status</a></b></td>
         <td>object</td>
         <td>
-          DisruptionBudgetStatus defines the observed state of ApplicationDisruptionBudget<br/>
+          <br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -549,6 +603,22 @@ NodeDisruptionBudgetSpec defines the desired state of NodeDisruptionBudget
         <td>object</td>
         <td>
           NodeSelector query over pods whose nodes are managed by the disruption budget.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>supportedNodeDisruptionTypes</b></td>
+        <td>[]string</td>
+        <td>
+          SupportedNodeDisruptionTypes is the list of node disruption types that this budget supports.
+When set, this budget will only be considered during reconciliation of NodeDisruptions whose type
+is in this list. When empty, the controller's default node disruption types are used.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b><a href="#nodedisruptionbudgetspectaintselector">taintSelector</a></b></td>
+        <td>object</td>
+        <td>
+          TaintSelector allow to select taints that will be considered disruptions<br/>
         </td>
         <td>false</td>
       </tr></tbody>
@@ -637,12 +707,180 @@ merge patch.<br/>
 </table>
 
 
+### NodeDisruptionBudget.spec.taintSelector
+<sup><sup>[↩ Parent](#nodedisruptionbudgetspec)</sup></sup>
+
+
+
+TaintSelector allow to select taints that will be considered disruptions
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody><tr>
+        <td><b><a href="#nodedisruptionbudgetspectaintselectorexcludeindex">exclude</a></b></td>
+        <td>[]object</td>
+        <td>
+          <br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b><a href="#nodedisruptionbudgetspectaintselectorincludeindex">include</a></b></td>
+        <td>[]object</td>
+        <td>
+          <br/>
+        </td>
+        <td>false</td>
+      </tr></tbody>
+</table>
+
+
+### NodeDisruptionBudget.spec.taintSelector.exclude[index]
+<sup><sup>[↩ Parent](#nodedisruptionbudgetspectaintselector)</sup></sup>
+
+
+
+The pod this Toleration is attached to tolerates any taint that matches
+the triple <key,value,effect> using the matching operator <operator>.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody><tr>
+        <td><b>effect</b></td>
+        <td>string</td>
+        <td>
+          Effect indicates the taint effect to match. Empty means match all taint effects.
+When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>key</b></td>
+        <td>string</td>
+        <td>
+          Key is the taint key that the toleration applies to. Empty means match all taint keys.
+If the key is empty, operator must be Exists; this combination means to match all values and all keys.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>operator</b></td>
+        <td>string</td>
+        <td>
+          Operator represents a key's relationship to the value.
+Valid operators are Exists and Equal. Defaults to Equal.
+Exists is equivalent to wildcard for value, so that a pod can
+tolerate all taints of a particular category.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>tolerationSeconds</b></td>
+        <td>integer</td>
+        <td>
+          TolerationSeconds represents the period of time the toleration (which must be
+of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+it is not set, which means tolerate the taint forever (do not evict). Zero and
+negative values will be treated as 0 (evict immediately) by the system.<br/>
+          <br/>
+            <i>Format</i>: int64<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>value</b></td>
+        <td>string</td>
+        <td>
+          Value is the taint value the toleration matches to.
+If the operator is Exists, the value should be empty, otherwise just a regular string.<br/>
+        </td>
+        <td>false</td>
+      </tr></tbody>
+</table>
+
+
+### NodeDisruptionBudget.spec.taintSelector.include[index]
+<sup><sup>[↩ Parent](#nodedisruptionbudgetspectaintselector)</sup></sup>
+
+
+
+The pod this Toleration is attached to tolerates any taint that matches
+the triple <key,value,effect> using the matching operator <operator>.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody><tr>
+        <td><b>effect</b></td>
+        <td>string</td>
+        <td>
+          Effect indicates the taint effect to match. Empty means match all taint effects.
+When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>key</b></td>
+        <td>string</td>
+        <td>
+          Key is the taint key that the toleration applies to. Empty means match all taint keys.
+If the key is empty, operator must be Exists; this combination means to match all values and all keys.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>operator</b></td>
+        <td>string</td>
+        <td>
+          Operator represents a key's relationship to the value.
+Valid operators are Exists and Equal. Defaults to Equal.
+Exists is equivalent to wildcard for value, so that a pod can
+tolerate all taints of a particular category.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>tolerationSeconds</b></td>
+        <td>integer</td>
+        <td>
+          TolerationSeconds represents the period of time the toleration (which must be
+of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+it is not set, which means tolerate the taint forever (do not evict). Zero and
+negative values will be treated as 0 (evict immediately) by the system.<br/>
+          <br/>
+            <i>Format</i>: int64<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>value</b></td>
+        <td>string</td>
+        <td>
+          Value is the taint value the toleration matches to.
+If the operator is Exists, the value should be empty, otherwise just a regular string.<br/>
+        </td>
+        <td>false</td>
+      </tr></tbody>
+</table>
+
+
 ### NodeDisruptionBudget.status
 <sup><sup>[↩ Parent](#nodedisruptionbudget)</sup></sup>
 
 
 
-DisruptionBudgetStatus defines the observed state of ApplicationDisruptionBudget
+
 
 <table>
     <thead>
@@ -678,6 +916,13 @@ DisruptionBudgetStatus defines the observed state of ApplicationDisruptionBudget
             <i>Default</i>: 0<br/>
         </td>
         <td>true</td>
+      </tr><tr>
+        <td><b><a href="#nodedisruptionbudgetstatustaintednodesindex">taintedNodes</a></b></td>
+        <td>[]object</td>
+        <td>
+          TaintedNodes contains nodes selected that have an allowed taint<br/>
+        </td>
+        <td>false</td>
       </tr><tr>
         <td><b>watchedNodes</b></td>
         <td>[]string</td>
@@ -719,6 +964,40 @@ Basic information about disruptions
         <td>string</td>
         <td>
           State of the disruption<br/>
+        </td>
+        <td>true</td>
+      </tr></tbody>
+</table>
+
+
+### NodeDisruptionBudget.status.taintedNodes[index]
+<sup><sup>[↩ Parent](#nodedisruptionbudgetstatus)</sup></sup>
+
+
+
+
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody><tr>
+        <td><b>name</b></td>
+        <td>string</td>
+        <td>
+          <br/>
+        </td>
+        <td>true</td>
+      </tr><tr>
+        <td><b>taints</b></td>
+        <td>[]string</td>
+        <td>
+          <br/>
         </td>
         <td>true</td>
       </tr></tbody>
@@ -795,6 +1074,22 @@ NodeDisruptionSpec defines the desired state of NodeDisruption
         </tr>
     </thead>
     <tbody><tr>
+        <td><b>doNotGrantBefore</b></td>
+        <td>string</td>
+        <td>
+          DoNotGrantBefore prevents the disruption from being granted before the specified time<br/>
+          <br/>
+            <i>Format</i>: date-time<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>duration</b></td>
+        <td>string</td>
+        <td>
+          Duration of the disruption once granted<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
         <td><b><a href="#nodedisruptionspecnodeselector">nodeSelector</a></b></td>
         <td>object</td>
         <td>
@@ -805,7 +1100,16 @@ NodeDisruptionSpec defines the desired state of NodeDisruption
         <td><b><a href="#nodedisruptionspecretry">retry</a></b></td>
         <td>object</td>
         <td>
-          Configure the retrying behavior of a NodeDisruption<br/>
+          Retry configuration allows to retry a disruption after rejection until the given deadline<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>startDate</b></td>
+        <td>string</td>
+        <td>
+          StartDate when the disruption should start<br/>
+          <br/>
+            <i>Format</i>: date-time<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -906,7 +1210,7 @@ merge patch.<br/>
 
 
 
-Configure the retrying behavior of a NodeDisruption
+Retry configuration allows to retry a disruption after rejection until the given deadline
 
 <table>
     <thead>
@@ -1010,7 +1314,14 @@ NodeDisruptionStatus defines the observed state of NodeDisruption (/!\ it is eve
         <td><b>ok</b></td>
         <td>boolean</td>
         <td>
-          <br/>
+          Ok is set to true when application manager preparation is complete and ready for the NodeDisruption to continue.<br/>
+        </td>
+        <td>true</td>
+      </tr><tr>
+        <td><b>preparing</b></td>
+        <td>boolean</td>
+        <td>
+          Preparing is set to true when the application manager started preparation. Value is kept true even when the app is ready.<br/>
         </td>
         <td>true</td>
       </tr><tr>

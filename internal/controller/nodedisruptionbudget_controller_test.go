@@ -182,6 +182,87 @@ var _ = Describe("NodeDisruptionBudget controller", func() {
 				})
 			})
 
+			When("a selected node gets a matching taint", func() {
+				It("counts the node as disrupted until the taint is removed", func() {
+					By("creating a budget with a taint selector")
+					ndb := &nodedisruptionv1alpha1.NodeDisruptionBudget{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "nodedisruption.criteo.com/v1alpha1",
+							Kind:       "NodeDisruptionBudget",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      NDBname,
+							Namespace: NDBNamespace,
+						},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionBudgetSpec{
+							NodeSelector:      metav1.LabelSelector{MatchLabels: nodeLabels1},
+							MaxDisruptedNodes: 1,
+							TaintSelector: &nodedisruptionv1alpha1.TaintSelector{
+								Include: []corev1.Toleration{
+									{Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
+								},
+								Exclude: []corev1.Toleration{
+									{Key: "crto.in/dedicated", Operator: corev1.TolerationOpExists},
+									{Key: "node.kubernetes.io/not-ready", Operator: corev1.TolerationOpExists},
+								},
+							},
+						},
+					}
+					Expect(k8sClient.Create(ctx, ndb)).Should(Succeed())
+
+					NDBLookupKey := types.NamespacedName{Name: NDBname, Namespace: NDBNamespace}
+					createdNDB := &nodedisruptionv1alpha1.NodeDisruptionBudget{}
+					Eventually(func() []string {
+						Expect(k8sClient.Get(ctx, NDBLookupKey, createdNDB)).Should(Succeed())
+						return createdNDB.Status.WatchedNodes
+					}, timeout, interval).Should(Equal([]string{"node1", "node2"}))
+					Expect(createdNDB.Status.TaintedNodes).Should(BeEmpty())
+					Expect(createdNDB.Status.DisruptionsAllowed).Should(Equal(1))
+
+					originalNode2 := &corev1.Node{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "node2"}, originalNode2)).Should(Succeed())
+					originalTaints := originalNode2.Spec.Taints
+					setNode2Taints := func(taints []corev1.Taint) {
+						node := &corev1.Node{}
+						Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "node2"}, node)).Should(Succeed())
+						node.Spec.Taints = taints
+						Expect(k8sClient.Update(ctx, node)).Should(Succeed())
+					}
+					DeferCleanup(setNode2Taints, originalTaints)
+
+					By("adding an excluded taint to node2")
+					setNode2Taints(append([]corev1.Taint{{Key: "crto.in/dedicated", Value: "team", Effect: corev1.TaintEffectNoSchedule}}, originalTaints...))
+					Consistently(func() int {
+						Expect(k8sClient.Get(ctx, NDBLookupKey, createdNDB)).Should(Succeed())
+						return createdNDB.Status.CurrentDisruptions
+					}, time.Second*2, interval).Should(Equal(0))
+
+					By("adding an included taint to node2")
+					setNode2Taints(append([]corev1.Taint{
+						{Key: "crto.in/dedicated", Value: "team", Effect: corev1.TaintEffectNoSchedule},
+						{Key: "node.cilium.io/agent-not-ready", Effect: corev1.TaintEffectNoSchedule},
+					}, originalTaints...))
+					Eventually(func() []nodedisruptionv1alpha1.TaintedNode {
+						Expect(k8sClient.Get(ctx, NDBLookupKey, createdNDB)).Should(Succeed())
+						return createdNDB.Status.TaintedNodes
+					}, timeout, interval).Should(Equal([]nodedisruptionv1alpha1.TaintedNode{{
+						Name:   "node2",
+						Taints: []string{"node.cilium.io/agent-not-ready:NoSchedule"},
+					}}))
+					Expect(createdNDB.Status.CurrentDisruptions).Should(Equal(1))
+					Expect(createdNDB.Status.DisruptionsAllowed).Should(Equal(0))
+
+					By("removing the added taints from node2")
+					setNode2Taints(originalTaints)
+					Eventually(func() []nodedisruptionv1alpha1.TaintedNode {
+						Expect(k8sClient.Get(ctx, NDBLookupKey, createdNDB)).Should(Succeed())
+						return createdNDB.Status.TaintedNodes
+					}, timeout, interval).Should(BeEmpty())
+					Expect(createdNDB.Status.CurrentDisruptions).Should(Equal(0))
+					Expect(createdNDB.Status.DisruptionsAllowed).Should(Equal(1))
+				})
+			})
+
 			When("NodeSelector is empty", func() {
 				It("watches no nodes", func() {
 					By("creating a budget with empty NodeSelector")

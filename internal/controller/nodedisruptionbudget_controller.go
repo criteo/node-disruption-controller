@@ -123,7 +123,7 @@ func PruneNDBMetrics(ref nodedisruptionv1alpha1.NamespacedName) {
 func UpdateNDBMetrics(ref nodedisruptionv1alpha1.NamespacedName, ndb *nodedisruptionv1alpha1.NodeDisruptionBudget) {
 	DisruptionBudgetMaxDisruptedNodes.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(float64(ndb.Spec.MaxDisruptedNodes))
 	DisruptionBudgetMinUndisruptedNodes.WithLabelValues(ref.Namespace, ref.Name, ref.Kind).Set(float64(ndb.Spec.MinUndisruptedNodes))
-	UpdateBudgetStatusMetrics(ref, ndb.Status)
+	UpdateBudgetStatusMetrics(ref, ndb.Status.DisruptionBudgetStatus)
 }
 
 // MapFuncBuilder returns a MapFunc that is used to dispatch reconcile requests to
@@ -191,11 +191,17 @@ func (r *NodeDisruptionBudgetResolver) Sync(ctx context.Context) error {
 
 	nodes := resolver.NodeSetToStringList(nodeNames)
 
-	disruptionCount, disruptions, err := r.ResolveDisruption(ctx)
+	taintedNodes, err := r.GetTaintedNodes(ctx)
 	if err != nil {
 		return err
 	}
 
+	disruptionCount, disruptions, err := r.ResolveDisruption(ctx, taintedNodeSet(taintedNodes))
+	if err != nil {
+		return err
+	}
+
+	r.NodeDisruptionBudget.Status.TaintedNodes = taintedNodes
 	r.NodeDisruptionBudget.Status.WatchedNodes = nodes
 	r.NodeDisruptionBudget.Status.CurrentDisruptions = disruptionCount
 	r.NodeDisruptionBudget.Status.DisruptionsAllowed = computeNodeDisruptionBudgetDisruptionsAllowed(
@@ -217,7 +223,9 @@ func (r *NodeDisruptionBudgetResolver) IsImpacted(disruptedNodes resolver.NodeSe
 // Return the number of disruption allowed considering a list of current node disruptions
 func (r *NodeDisruptionBudgetResolver) TolerateDisruption(disruptedNodes resolver.NodeSet) bool {
 	watchedNodes := resolver.NewNodeSetFromStringList(r.NodeDisruptionBudget.Status.WatchedNodes)
-	disruptedNodesCount := watchedNodes.Intersection(disruptedNodes).Len()
+	taintedNodes := taintedNodeSet(r.NodeDisruptionBudget.Status.TaintedNodes)
+	impactedNodes := watchedNodes.Intersection(disruptedNodes)
+	disruptedNodesCount := impactedNodes.Len() - impactedNodes.Intersection(taintedNodes).Len()
 	return r.NodeDisruptionBudget.Status.DisruptionsAllowed-disruptedNodesCount >= 0
 }
 
@@ -271,7 +279,41 @@ func (r *NodeDisruptionBudgetResolver) GetSelectedNodes(ctx context.Context) (re
 	return nodesFromPods, nil
 }
 
-func (r *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (int, []nodedisruptionv1alpha1.Disruption, error) {
+func taintedNodeSet(taintedNodes []nodedisruptionv1alpha1.TaintedNode) resolver.NodeSet {
+	names := make([]string, 0, len(taintedNodes))
+	for _, taintedNode := range taintedNodes {
+		names = append(names, taintedNode.Name)
+	}
+	return resolver.NewNodeSetFromStringList(names)
+}
+
+func (r *NodeDisruptionBudgetResolver) GetTaintedNodes(ctx context.Context) ([]nodedisruptionv1alpha1.TaintedNode, error) {
+	taintSelector := r.NodeDisruptionBudget.Spec.TaintSelector
+	if taintSelector == nil {
+		return nil, nil
+	}
+
+	matchingTaints := map[string][]string{}
+	nodeSet, err := r.Resolver.GetMatchingNodeFromNodeSelector(ctx, r.NodeDisruptionBudget.Spec.NodeSelector, func(node *corev1.Node) bool {
+		taints := taintSelector.MatchingTaints(node)
+		if len(taints) == 0 {
+			return false
+		}
+		matchingTaints[node.Name] = taints
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var taintedNodes []nodedisruptionv1alpha1.TaintedNode
+	for _, name := range resolver.NodeSetToStringList(nodeSet) {
+		taintedNodes = append(taintedNodes, nodedisruptionv1alpha1.TaintedNode{Name: name, Taints: matchingTaints[name]})
+	}
+	return taintedNodes, nil
+}
+
+func (r *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context, taintedNodes resolver.NodeSet) (int, []nodedisruptionv1alpha1.Disruption, error) {
 	disruptions := []nodedisruptionv1alpha1.Disruption{}
 	selectedNodes, err := r.GetSelectedNodes(ctx)
 	if err != nil {
@@ -279,6 +321,7 @@ func (r *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (i
 	}
 
 	disruptionCount := 0
+	grantedNodes := resolver.NewNodeSetFromStringList(nil)
 
 	opts := []client.ListOption{}
 	nodeDisruptions := &nodedisruptionv1alpha1.NodeDisruptionList{}
@@ -302,6 +345,7 @@ func (r *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (i
 		if selectedNodes.Intersection(impactedNodes).Len() > 0 {
 			if nd.Status.State == nodedisruptionv1alpha1.Granted {
 				disruptionCount++
+				grantedNodes = grantedNodes.Union(impactedNodes)
 			}
 			disruptions = append(disruptions, nodedisruptionv1alpha1.Disruption{
 				Name:  nd.Name,
@@ -309,5 +353,6 @@ func (r *NodeDisruptionBudgetResolver) ResolveDisruption(ctx context.Context) (i
 			})
 		}
 	}
+	disruptionCount += taintedNodes.Len() - taintedNodes.Intersection(grantedNodes).Len()
 	return disruptionCount, disruptions, err
 }

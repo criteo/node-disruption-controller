@@ -42,6 +42,40 @@ type NodeDisruptionBudgetSpec struct {
 	// is in this list. When empty, the controller's default node disruption types are used.
 	// +kubebuilder:validation:Optional
 	SupportedNodeDisruptionTypes []string `json:"supportedNodeDisruptionTypes,omitempty"`
+	// TaintSelector allow to select taints that will be considered disruptions
+	// +kubebuilder:validation:Optional
+	TaintSelector *TaintSelector `json:"taintSelector,omitempty"`
+}
+
+type TaintSelector struct {
+	Include []corev1.Toleration `json:"include,omitempty"`
+	Exclude []corev1.Toleration `json:"exclude,omitempty"`
+}
+
+func tolerationsMatchTaint(tolerations []corev1.Toleration, taint *corev1.Taint) bool {
+	for i := range tolerations {
+		if tolerations[i].ToleratesTaint(taint) {
+			return true
+		}
+	}
+	return false
+}
+
+func (ts *TaintSelector) MatchesTaint(taint *corev1.Taint) bool {
+	if tolerationsMatchTaint(ts.Exclude, taint) {
+		return false
+	}
+	return len(ts.Include) == 0 || tolerationsMatchTaint(ts.Include, taint)
+}
+
+func (ts *TaintSelector) MatchingTaints(node *corev1.Node) []string {
+	var taints []string
+	for i := range node.Spec.Taints {
+		if ts.MatchesTaint(&node.Spec.Taints[i]) {
+			taints = append(taints, node.Spec.Taints[i].ToString())
+		}
+	}
+	return taints
 }
 
 //+kubebuilder:object:root=true
@@ -57,8 +91,20 @@ type NodeDisruptionBudget struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   NodeDisruptionBudgetSpec `json:"spec,omitempty"`
-	Status DisruptionBudgetStatus   `json:"status,omitempty"`
+	Spec   NodeDisruptionBudgetSpec   `json:"spec,omitempty"`
+	Status NodeDisruptionBudgetStatus `json:"status,omitempty"`
+}
+
+type NodeDisruptionBudgetStatus struct {
+	DisruptionBudgetStatus `json:",inline"`
+
+	// TaintedNodes contains nodes selected that have an allowed taint
+	TaintedNodes []TaintedNode `json:"taintedNodes,omitempty"`
+}
+
+type TaintedNode struct {
+	Name   string   `json:"name"`
+	Taints []string `json:"taints"`
 }
 
 // SelectorMatchesObject return true if the object is matched by one of the selectors
