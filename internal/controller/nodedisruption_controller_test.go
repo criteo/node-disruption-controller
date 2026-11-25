@@ -1558,3 +1558,60 @@ func TestReconcile_DoesNotErrorOnNotFoundStatusUpdate(t *testing.T) {
 	})
 	assert.NoError(t, err, "NotFound on status update must be swallowed by Reconcile")
 }
+
+// TestReconcile_ReturnsErrorWhenSingleReconcileFails verifies that an error raised while
+// reconciling a NodeDisruption (here: budgets cannot be listed) is returned to
+// controller-runtime so the NodeDisruption is requeued with backoff, and that the status
+// is left untouched.
+func TestReconcile_ReturnsErrorWhenSingleReconcileFails(t *testing.T) {
+	s := runtime.NewScheme()
+	require.NoError(t, scheme.AddToScheme(s))
+	require.NoError(t, nodedisruptionv1alpha1.AddToScheme(s))
+
+	nd := &nodedisruptionv1alpha1.NodeDisruption{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "failing-nd",
+			Finalizers: []string{FinalizerName},
+		},
+		Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+			NodeSelector: metav1.LabelSelector{},
+			Type:         "maintenance",
+		},
+		Status: nodedisruptionv1alpha1.NodeDisruptionStatus{
+			State: nodedisruptionv1alpha1.Pending,
+		},
+	}
+
+	listErr := fmt.Errorf("apiserver unavailable")
+	statusUpdated := false
+
+	c := fake.NewClientBuilder().
+		WithScheme(s).
+		WithObjects(nd).
+		WithStatusSubresource(&nodedisruptionv1alpha1.NodeDisruption{}).
+		WithInterceptorFuncs(interceptor.Funcs{
+			List: func(ctx context.Context, cl client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+				if _, ok := list.(*nodedisruptionv1alpha1.ApplicationDisruptionBudgetList); ok {
+					return listErr
+				}
+				return cl.List(ctx, list, opts...)
+			},
+			SubResourceUpdate: func(ctx context.Context, cl client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+				statusUpdated = true
+				return cl.SubResource(subResourceName).Update(ctx, obj, opts...)
+			},
+		}).
+		Build()
+
+	r := &NodeDisruptionReconciler{
+		Client: c,
+		Scheme: s,
+		Config: NodeDisruptionReconcilerConfig{RetryInterval: time.Second},
+	}
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: nd.Name},
+	})
+	require.ErrorIs(t, err, listErr, "reconcile errors must be returned so the NodeDisruption is requeued")
+	assert.False(t, statusUpdated, "status must not be updated when the reconcile failed")
+}
