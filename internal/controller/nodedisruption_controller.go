@@ -119,7 +119,8 @@ func (r *NodeDisruptionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	err = reconciler.Reconcile(ctx)
 	if err != nil {
-		return clusterResult, nil
+		// Return the error so that controller-runtime requeues the NodeDisruption with backoff.
+		return clusterResult, err
 	}
 
 	if !reflect.DeepEqual(nd.Status, reconciler.NodeDisruption.Status) {
