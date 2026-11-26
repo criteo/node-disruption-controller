@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -260,20 +261,11 @@ func (r *ApplicationDisruptionBudgetResolver) CallPrepareHook(ctx context.Contex
 		return err
 	}
 
-	statusCode := 200
-	defer func() {
-		DisruptionBudgetCheckPrepareHookStatusCodeTotal.WithLabelValues(r.ApplicationDisruptionBudget.Namespace, r.ApplicationDisruptionBudget.Name, r.ApplicationDisruptionBudget.Kind, strconv.Itoa(statusCode)).Inc()
-	}()
 	_, err = svc.PrepareApplication(&disruption.PrepareApplicationParams{
 		Body:       r.hookBody(nd),
 		HTTPClient: &http.Client{Timeout: timeout},
 	})
-	if err == nil {
-		return nil
-	}
-	if e, ok := err.(*openapiruntime.APIError); ok {
-		statusCode = e.Code
-	}
+	DisruptionBudgetCheckPrepareHookStatusCodeTotal.WithLabelValues(r.ApplicationDisruptionBudget.Namespace, r.ApplicationDisruptionBudget.Name, r.ApplicationDisruptionBudget.Kind, hookStatusCode(err)).Inc()
 	if e, ok := err.(*disruption.PrepareApplicationStatus425); ok {
 		return fmt.Errorf("retry later, in %v seconds", e.RetryAfter)
 	}
@@ -286,20 +278,11 @@ func (r *ApplicationDisruptionBudgetResolver) CallReadyHook(ctx context.Context,
 		return err
 	}
 
-	statusCode := 200
-	defer func() {
-		DisruptionBudgetCheckReadyHookStatusCodeTotal.WithLabelValues(r.ApplicationDisruptionBudget.Namespace, r.ApplicationDisruptionBudget.Name, r.ApplicationDisruptionBudget.Kind, strconv.Itoa(statusCode)).Inc()
-	}()
 	_, err = svc.CheckReadiness(&disruption.CheckReadinessParams{
 		Body:       r.hookBody(nd),
 		HTTPClient: &http.Client{Timeout: timeout},
 	})
-	if err == nil {
-		return nil
-	}
-	if e, ok := err.(*openapiruntime.APIError); ok {
-		statusCode = e.Code
-	}
+	DisruptionBudgetCheckReadyHookStatusCodeTotal.WithLabelValues(r.ApplicationDisruptionBudget.Namespace, r.ApplicationDisruptionBudget.Name, r.ApplicationDisruptionBudget.Kind, hookStatusCode(err)).Inc()
 	if e, ok := err.(*disruption.CheckReadinessStatus425); ok {
 		return fmt.Errorf("retry later, in %v seconds", e.RetryAfter)
 	}
@@ -312,18 +295,31 @@ func (r *ApplicationDisruptionBudgetResolver) CallTerminateHook(ctx context.Cont
 		return err
 	}
 
-	statusCode := 200
-	defer func() {
-		DisruptionBudgetCheckTerminateHookStatusCodeTotal.WithLabelValues(r.ApplicationDisruptionBudget.Namespace, r.ApplicationDisruptionBudget.Name, r.ApplicationDisruptionBudget.Kind, strconv.Itoa(statusCode)).Inc()
-	}()
 	_, err = svc.TerminateDisruption(&disruption.TerminateDisruptionParams{
 		Body:       r.hookBody(nd),
 		HTTPClient: &http.Client{Timeout: timeout},
 	})
-	if e, ok := err.(*openapiruntime.APIError); ok {
-		statusCode = e.Code
-	}
+	DisruptionBudgetCheckTerminateHookStatusCodeTotal.WithLabelValues(r.ApplicationDisruptionBudget.Namespace, r.ApplicationDisruptionBudget.Name, r.ApplicationDisruptionBudget.Kind, hookStatusCode(err)).Inc()
 	return err
+}
+
+// hookStatusCode returns the HTTP status code of a hook call, as a metric label. The generated
+// client returns one error type per response, each with a Code() method, except for unexpected
+// success responses (APIError). "error" means that no response was received (timeout, connection
+// refused...).
+func hookStatusCode(err error) string {
+	if err == nil {
+		return "200"
+	}
+	var apiErr *openapiruntime.APIError
+	if errors.As(err, &apiErr) {
+		return strconv.Itoa(apiErr.Code)
+	}
+	var response interface{ Code() int }
+	if errors.As(err, &response) {
+		return strconv.Itoa(response.Code())
+	}
+	return "error"
 }
 
 func (r *ApplicationDisruptionBudgetResolver) hookClient() (disruption.ClientService, error) {
