@@ -43,6 +43,7 @@ func TestHookStatusCode(t *testing.T) {
 		{"success", nil, "200"},
 		{"424 response", disruption.NewPrepareApplicationFailedDependency(), "424"},
 		{"425 response", disruption.NewCheckReadinessStatus425(), "425"},
+		{"accept 424 response", disruption.NewAcceptDisruptionFailedDependency(), "424"},
 		{"other response", disruption.NewPrepareApplicationDefault(503), "503"},
 		{"unexpected success response", openapiruntime.NewAPIError("unexpected success response", nil, 204), "204"},
 		{"wrapped response", fmt.Errorf("hook: %w", disruption.NewPrepareApplicationFailedDependency()), "424"},

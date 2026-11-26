@@ -255,6 +255,35 @@ func (r *ApplicationDisruptionBudgetResolver) V2HooksReady() bool {
 	return r.ApplicationDisruptionBudget.Spec.HookV2BasePath.URL != ""
 }
 
+func (r *ApplicationDisruptionBudgetResolver) V3HooksReady() bool {
+	return r.ApplicationDisruptionBudget.Spec.HookV3BasePath.URL != ""
+}
+
+// hookBasePath returns the base URL of the prepare, ready, terminate (and accept for v3) hooks.
+func (r *ApplicationDisruptionBudgetResolver) hookBasePath() string {
+	if r.V3HooksReady() {
+		return r.ApplicationDisruptionBudget.Spec.HookV3BasePath.URL
+	}
+	return r.ApplicationDisruptionBudget.Spec.HookV2BasePath.URL
+}
+
+func (r *ApplicationDisruptionBudgetResolver) CallAcceptHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+	svc, err := r.hookClient()
+	if err != nil {
+		return err
+	}
+
+	_, err = svc.AcceptDisruption(&disruption.AcceptDisruptionParams{
+		Body:       r.hookBody(nd),
+		HTTPClient: &http.Client{Timeout: timeout},
+	})
+	DisruptionBudgetCheckAcceptHookStatusCodeTotal.WithLabelValues(r.ApplicationDisruptionBudget.Namespace, r.ApplicationDisruptionBudget.Name, r.ApplicationDisruptionBudget.Kind, hookStatusCode(err)).Inc()
+	if e, ok := err.(*disruption.AcceptDisruptionStatus425); ok {
+		return fmt.Errorf("retry later, in %v seconds", e.RetryAfter)
+	}
+	return err
+}
+
 func (r *ApplicationDisruptionBudgetResolver) CallPrepareHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
 	svc, err := r.hookClient()
 	if err != nil {
@@ -327,7 +356,7 @@ func (r *ApplicationDisruptionBudgetResolver) hookClient() (disruption.ClientSer
 		return r.hookCli, nil
 	}
 
-	u, err := url.Parse(r.ApplicationDisruptionBudget.Spec.HookV2BasePath.URL)
+	u, err := url.Parse(r.hookBasePath())
 	if err != nil {
 		return nil, err
 	}

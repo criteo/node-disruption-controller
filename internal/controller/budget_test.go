@@ -21,6 +21,18 @@ type MockBudget struct {
 	// True if the budget was health checked
 	healthChecked bool
 	health        error
+	// Hook versions: v2 enables prepare/ready, v3 enables accept/prepare/ready
+	v2 bool
+	v3 bool
+	// Errors returned by the hooks, and number of calls to each of them
+	acceptErr    error
+	prepareErr   error
+	readyErr     error
+	acceptCalls  int
+	prepareCalls int
+	readyCalls   int
+	// Notice period returned for every disruption type
+	notice time.Duration
 }
 
 func (m *MockBudget) Sync(context.Context) error {
@@ -38,15 +50,26 @@ func (m *MockBudget) TolerateDisruption(resolver.NodeSet) bool {
 }
 
 func (m *MockBudget) V2HooksReady() bool {
-	return false
+	return m.v2
+}
+
+func (m *MockBudget) V3HooksReady() bool {
+	return m.v3
+}
+
+func (m *MockBudget) CallAcceptHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error {
+	m.acceptCalls++
+	return m.acceptErr
 }
 
 func (m *MockBudget) CallPrepareHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error {
-	return nil
+	m.prepareCalls++
+	return m.prepareErr
 }
 
 func (m *MockBudget) CallReadyHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error {
-	return nil
+	m.readyCalls++
+	return m.readyErr
 }
 
 func (m *MockBudget) CallTerminateHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error {
@@ -74,7 +97,7 @@ func (m *MockBudget) GetSupportedDisruptionTypes() []string {
 }
 
 func (m *MockBudget) NoticePeriodFor(_ string) time.Duration {
-	return 0
+	return m.notice
 }
 
 func TestValidateWithBudgetConstraintsNoImpactedBudget(t *testing.T) {

@@ -19,6 +19,10 @@ type Budget interface {
 	TolerateDisruption(resolver.NodeSet) bool
 	// Return true if the budget has v2 hooks configured (for prepare, ready, terminate)
 	V2HooksReady() bool
+	// Return true if the budget has v3 hooks configured (for accept, prepare, ready, terminate)
+	V3HooksReady() bool
+	// Call the accept hook to ask whether the application accepts the disruption, without preparing for it
+	CallAcceptHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error
 	// Call the prepare hook to trigger the preparation of the application for disruption
 	CallPrepareHook(context.Context, nodedisruptionv1alpha1.NodeDisruption, time.Duration) error
 	// Call the ready hook to validate that the application is ready for disruption

@@ -182,9 +182,65 @@ The hook will be called with a POST method containing the JSON encoded NodeDisru
 
 Note: It is not a replacement for readiness probes but a complement.
 
+##### V2 and V3 hooks
+
+Instead of a health hook, a budget can declare a base URL for lifecycle hooks, described in
+[app_manager_openapi.yml](app_manager_openapi.yml). Each hook receives a POST with the JSON encoded
+disruption, restricted to the nodes of the budget.
+
+- `hookV2BasePath`: `/prepare` → `/ready` → `/terminate`. Each impacted budget is asked to prepare as
+  soon as the disruption reaches it, independently of the other impacted budgets.
+- `hookV3BasePath`: `/accept` → `/prepare` → `/ready` → `/terminate`. Use it when several applications
+  share nodes: no application prepares for a disruption that another impacted application refuses.
+  `hookV2BasePath` and `hookV3BasePath` are mutually exclusive.
+
+When at least one impacted budget uses v3 hooks:
+
+1. On every reconciliation, the controller calls `/accept` on each impacted v3 budget that is not
+   preparing yet, including the ones that already accepted. Accepting is not a reservation and does not
+   guarantee that `/prepare` will be called: an application should accept whenever it could prepare,
+   for example when it is healthy, and can withdraw its acceptance later. `200` accepts. `424` and
+   `425` mean "not now", and so does any other answer or a timeout: the disruption stays pending and is
+   retried (or is rejected if retry is disabled or the deadline is reached). The budget status has
+   `accepted: true` once accepted.
+2. Budgets using v2 hooks, a health hook, or no hook, count as accepted. Budgets waiting for their
+   notice period count as not accepted, and `/accept` is not called on them before it opens.
+3. Once every impacted budget accepted the disruption, `/prepare` is called on all of them in the same
+   reconciliation, so that they start preparing together.
+4. From there the workflow is the v2 one. If `/prepare` fails for a budget, it stays accepted and goes
+   through `/accept` then `/prepare` again; budgets already preparing keep preparing.
+
+Note: budgets using v2 hooks or a health hook, impacted together with a v3 budget, are only called
+once every v3 budget accepted.
+
+###### Known limitation: `/terminate` after an interrupted preparation
+
+When a NodeDisruption is deleted, `/terminate` is only called on the budgets whose preparation is
+recorded in its status (`preparing: true`). The controller calls the hooks first and records the result
+afterwards. If the NodeDisruption is deleted, or the controller restarts, while `/prepare` calls are in
+flight, the status update fails: an application can stay prepared without ever receiving `/terminate`.
+With v3 hooks, every impacted budget is prepared in the same reconciliation, so a single failed update
+can affect several applications.
+
+Until this is fixed, application managers should expire a preparation on their side (for example at
+`startDate` + `duration`, or at the retry deadline), and accept a repeated `/prepare` for the same
+disruption.
+
+Two fixes were considered:
+
+- (a) Record the preparation in the status before calling `/prepare`, so that a preparation is never
+  started without being recorded. It costs one more status update per preparation, and a restart between
+  the update and the call leads to a `/terminate` for a preparation that never started.
+- (b) When a NodeDisruption is deleted, call `/terminate` on every impacted budget using v2 or v3 hooks,
+  whether its preparation was recorded or not. It is simpler, and also calls `/terminate` on applications
+  that never prepared.
+
+(b) is the planned fix. Both require application managers to answer `200` to `/terminate` for a
+disruption they did not prepare.
+
 #### Notice period
 
-A budget can require advance notice before a disruption. Its hooks (health hook or V2 prepare/ready/terminate) are not called, and the disruption is not granted, before `startDate − noticePeriod`, where `startDate` is the NodeDisruption's `spec.startDate`. Use `noticePeriodOverrides` to set a different notice period for specific disruption types; overrides take precedence over the global `noticePeriod`. Notice periods are whole hours, minutes and seconds, such as `30m` or `1h30m`.
+A budget can require advance notice before a disruption. Its hooks (health hook, V2 prepare/ready/terminate or V3 accept/prepare/ready/terminate) are not called, and the disruption is not granted, before `startDate − noticePeriod`, where `startDate` is the NodeDisruption's `spec.startDate`. Use `noticePeriodOverrides` to set a different notice period for specific disruption types; overrides take precedence over the global `noticePeriod`. Notice periods are whole hours, minutes and seconds, such as `30m` or `1h30m`.
 
 ```yaml
 spec:

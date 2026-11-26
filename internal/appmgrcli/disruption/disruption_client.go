@@ -54,6 +54,8 @@ type ClientOption func(*runtime.ClientOperation)
 
 // ClientService is the interface for Client methods
 type ClientService interface {
+	AcceptDisruption(params *AcceptDisruptionParams, opts ...ClientOption) (*AcceptDisruptionOK, error)
+
 	CheckReadiness(params *CheckReadinessParams, opts ...ClientOption) (*CheckReadinessOK, error)
 
 	PrepareApplication(params *PrepareApplicationParams, opts ...ClientOption) (*PrepareApplicationOK, error)
@@ -61,6 +63,50 @@ type ClientService interface {
 	TerminateDisruption(params *TerminateDisruptionParams, opts ...ClientOption) (*TerminateDisruptionOK, error)
 
 	SetTransport(transport runtime.ClientTransport)
+}
+
+/*
+AcceptDisruption asks the application whether it could prepare for a disruption v3 hooks only
+
+Answer 200 whenever the application could prepare for this disruption now, for example when it is healthy. Accepting is not a reservation: the application must not start preparing nor hold anything for this disruption, and prepare may never be called, for instance if another application refuses the disruption. The hook can be called several times for the same disruption, and the answer may change between calls. Prepare is only called right after a successful accept from all impacted applications.
+*/
+func (a *Client) AcceptDisruption(params *AcceptDisruptionParams, opts ...ClientOption) (*AcceptDisruptionOK, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewAcceptDisruptionParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "acceptDisruption",
+		Method:             "POST",
+		PathPattern:        "/accept",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"https"},
+		Params:             params,
+		Reader:             &AcceptDisruptionReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*AcceptDisruptionOK)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*AcceptDisruptionDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
 }
 
 /*

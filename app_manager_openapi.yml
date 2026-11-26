@@ -92,6 +92,31 @@ responses:
 #      scheme: bearer
 #      description: "Use JWT token provided as bearer token"
 paths:
+  /accept:
+    post:
+      summary: Ask the application whether it could prepare for a disruption (v3 hooks only).
+      description: >-
+        Answer 200 whenever the application could prepare for this disruption now, for example when it is healthy.
+        Accepting is not a reservation: the application must not start preparing nor hold anything for this
+        disruption, and prepare may never be called, for instance if another application refuses the disruption.
+        The hook can be called several times for the same disruption, and the answer may change between calls.
+        Prepare is only called right after a successful accept from all impacted applications.
+      operationId: acceptDisruption
+      tags:
+        - disruption
+      consumes:
+        - application/json
+      parameters:
+        - $ref: '#/parameters/disruptionParam'
+      responses:
+        '200':
+          description: Accepted, prepare may be called for this disruption.
+        '424':
+          description: Not accepted now, may be accepted later.
+        '425':
+          $ref: '#/responses/RetryAfter'
+        default:
+          $ref: '#/responses/UnexpectedError'
   /prepare:
     post:
       summary: Prepare application for a disruption.

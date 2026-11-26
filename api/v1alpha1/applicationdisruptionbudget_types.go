@@ -29,6 +29,10 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// hookV2BasePath and hookV3BasePath are mutually exclusive. The rule uses size() > 0 rather than != '':
+// in a doc comment, gofmt would rewrite '' into a typographic quote and break the rule.
+// +kubebuilder:validation:XValidation:rule="!(has(self.hookV2BasePath) && has(self.hookV2BasePath.url) && size(self.hookV2BasePath.url) > 0 && has(self.hookV3BasePath) && has(self.hookV3BasePath.url) && size(self.hookV3BasePath.url) > 0)",message="hookV2BasePath and hookV3BasePath are mutually exclusive"
+
 // ApplicationDisruptionBudgetSpec defines the desired state of ApplicationDisruptionBudget
 type ApplicationDisruptionBudgetSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -51,6 +55,15 @@ type ApplicationDisruptionBudgetSpec struct {
 	// A POST http request containing a Disruption that is being reconciled is sent ot each of the hooks.
 	// +kubebuilder:validation:Optional
 	HookV2BasePath HookSpec `json:"hookV2BasePath,omitempty"`
+
+	// HookV3BasePath holds the base path for the accept, prepare, ready, terminate hooks that will be
+	// called at different stages of the NodeDisruption lifecycle. It is the v2 workflow with an
+	// additional accept step: prepare is only called once every budget impacted by the NodeDisruption
+	// has accepted it, so that applications sharing nodes prepare together.
+	// A POST http request containing a Disruption that is being reconciled is sent to each of the hooks.
+	// Mutually exclusive with HookV2BasePath.
+	// +kubebuilder:validation:Optional
+	HookV3BasePath HookSpec `json:"hookV3BasePath,omitempty"`
 
 	// SupportedNodeDisruptionTypes is the list of node disruption types that this budget supports.
 	// When set, this budget will only be considered during reconciliation of NodeDisruptions whose type

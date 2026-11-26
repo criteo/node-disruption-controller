@@ -233,6 +233,14 @@ func (r *NodeDisruptionBudgetResolver) V2HooksReady() bool {
 	return false
 }
 
+func (r *NodeDisruptionBudgetResolver) V3HooksReady() bool {
+	return false
+}
+
+func (r *NodeDisruptionBudgetResolver) CallAcceptHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
+	return nil
+}
+
 func (r *NodeDisruptionBudgetResolver) CallPrepareHook(ctx context.Context, nd nodedisruptionv1alpha1.NodeDisruption, timeout time.Duration) error {
 	return nil
 }

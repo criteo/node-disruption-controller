@@ -455,6 +455,116 @@ var _ = Describe("NodeDisruption controller", func() {
 				})
 			})
 
+			When("using v3 hook workflow", func() {
+				It("prepares no application before all impacted applications accepted, then prepares them all", func() {
+					type hookCalls struct{ accept, prepare, ready, terminate atomic.Int32 }
+					newV3Server := func(calls *hookCalls, accepting *atomic.Bool) *httptest.Server {
+						return startDummyHTTPServer(func(w http.ResponseWriter, req *http.Request) {
+							switch req.URL.Path {
+							case "/api/v3/accept":
+								calls.accept.Add(1)
+								if !accepting.Load() {
+									w.WriteHeader(http.StatusFailedDependency)
+									return
+								}
+							case "/api/v3/prepare":
+								calls.prepare.Add(1)
+							case "/api/v3/ready":
+								calls.ready.Add(1)
+							case "/api/v3/terminate":
+								calls.terminate.Add(1)
+							}
+							w.WriteHeader(http.StatusOK)
+						})
+					}
+
+					var callsA, callsB hookCalls
+					var acceptingA, acceptingB atomic.Bool
+					acceptingA.Store(true)
+					serverA := newV3Server(&callsA, &acceptingA)
+					defer serverA.Close()
+					serverB := newV3Server(&callsB, &acceptingB)
+					defer serverB.Close()
+
+					By("creating two v3 budgets sharing the same node")
+					for name, server := range map[string]*httptest.Server{"app-a": serverA, "app-b": serverB} {
+						adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+							ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+							Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+								PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+								MaxDisruptions: 1,
+								HookV3BasePath: nodedisruptionv1alpha1.HookSpec{URL: server.URL + "/api/v3"},
+							},
+						}
+						Expect(k8sClient.Create(ctx, adb)).Should(Succeed())
+						Eventually(func() []string {
+							created := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{}
+							Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, created)).Should(Succeed())
+							return created.Status.WatchedNodes
+						}, timeout, interval).Should(Equal([]string{"node1"}))
+					}
+
+					By("creating a NodeDisruption with retry while app-b does not accept it")
+					disruption := &nodedisruptionv1alpha1.NodeDisruption{
+						ObjectMeta: metav1.ObjectMeta{Name: NDName, Namespace: NDNamespace},
+						Spec: nodedisruptionv1alpha1.NodeDisruptionSpec{
+							NodeSelector: metav1.LabelSelector{MatchLabels: nodeLabels1},
+							Type:         "maintenance",
+							Retry: nodedisruptionv1alpha1.RetrySpec{
+								Enabled:  true,
+								Deadline: metav1.NewTime(time.Now().Add(time.Hour)),
+							},
+						},
+					}
+					Expect(k8sClient.Create(ctx, disruption)).Should(Succeed())
+
+					By("checking accept is called again on both, and no application is prepared")
+					Eventually(func() int32 { return callsB.accept.Load() }, timeout, interval).Should(BeNumerically(">=", 2))
+					Expect(callsA.accept.Load()).Should(BeNumerically(">=", 2))
+					Expect(callsA.prepare.Load()).Should(BeZero())
+					Expect(callsB.prepare.Load()).Should(BeZero())
+					createdDisruption := &nodedisruptionv1alpha1.NodeDisruption{}
+					Expect(k8sClient.Get(ctx, NDLookupKey, createdDisruption)).Should(Succeed())
+					Expect(createdDisruption.Status.State).Should(Equal(nodedisruptionv1alpha1.Pending))
+
+					By("letting app-b accept: both applications are prepared, then the disruption is granted")
+					acceptingB.Store(true)
+					Eventually(func() nodedisruptionv1alpha1.NodeDisruptionState {
+						Expect(k8sClient.Get(ctx, NDLookupKey, createdDisruption)).Should(Succeed())
+						return createdDisruption.Status.State
+					}, timeout, interval).Should(Equal(nodedisruptionv1alpha1.Granted))
+					Expect(callsA.prepare.Load()).Should(Equal(int32(1)))
+					Expect(callsB.prepare.Load()).Should(Equal(int32(1)))
+					Expect(callsA.ready.Load()).Should(Equal(int32(1)))
+					Expect(callsB.ready.Load()).Should(Equal(int32(1)))
+					Expect(createdDisruption.Status.DisruptedDisruptionBudgets).Should(HaveLen(2))
+					for _, status := range createdDisruption.Status.DisruptedDisruptionBudgets {
+						Expect(status.Accepted).Should(BeTrue())
+						Expect(status.Preparing).Should(BeTrue())
+						Expect(status.Ok).Should(BeTrue())
+					}
+
+					By("deleting the NodeDisruption calls the terminate hook of both applications")
+					Expect(k8sClient.Delete(ctx, createdDisruption.DeepCopy())).Should(Succeed())
+					Eventually(func() int32 { return callsA.terminate.Load() + callsB.terminate.Load() }, timeout, interval).Should(Equal(int32(2)))
+				})
+
+				It("rejects a budget declaring both v2 and v3 hooks", func() {
+					adb := &nodedisruptionv1alpha1.ApplicationDisruptionBudget{
+						ObjectMeta: metav1.ObjectMeta{Name: "both-hooks", Namespace: "default"},
+						Spec: nodedisruptionv1alpha1.ApplicationDisruptionBudgetSpec{
+							PodSelector:    metav1.LabelSelector{MatchLabels: podLabels},
+							MaxDisruptions: 1,
+							HookV2BasePath: nodedisruptionv1alpha1.HookSpec{URL: "http://localhost/api/v2"},
+							HookV3BasePath: nodedisruptionv1alpha1.HookSpec{URL: "http://localhost/api/v3"},
+						},
+					}
+					err := k8sClient.Create(ctx, adb)
+					Expect(errorsk8s.IsInvalid(err)).Should(BeTrue(), "got %v", err)
+					Expect(err.Error()).Should(ContainSubstring("mutually exclusive"))
+				})
+			})
+
 			Context("with a budget declaring a notice period", func() {
 				type hookCalls struct{ prepare, ready, terminate atomic.Int32 }
 
