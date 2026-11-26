@@ -58,6 +58,8 @@ ApplicationDisruptionBudget is the Schema for the applicationdisruptionbudgets A
         <td>object</td>
         <td>
           ApplicationDisruptionBudgetSpec defines the desired state of ApplicationDisruptionBudget<br/>
+          <br/>
+            <i>Validations</i>:<li>!(has(self.hookV2BasePath) && has(self.hookV2BasePath.url) && size(self.hookV2BasePath.url) > 0 && has(self.hookV3BasePath) && has(self.hookV3BasePath.url) && size(self.hookV3BasePath.url) > 0): hookV2BasePath and hookV3BasePath are mutually exclusive</li>
         </td>
         <td>false</td>
       </tr><tr>
@@ -110,6 +112,18 @@ Maintenance will proceed only if the endpoint responds 2XX.<br/>
           HookV2BasePath holds the base path for the prepare, ready, terminate hooks that will be
 called at different stages of the NodeDisruption lifecycle.
 A POST http request containing a Disruption that is being reconciled is sent ot each of the hooks.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b><a href="#applicationdisruptionbudgetspechookv3basepath">hookV3BasePath</a></b></td>
+        <td>object</td>
+        <td>
+          HookV3BasePath holds the base path for the accept, prepare, ready, terminate hooks that will be
+called at different stages of the NodeDisruption lifecycle. It is the v2 workflow with an
+additional accept step: prepare is only called once every budget impacted by the NodeDisruption
+has accepted it, so that applications sharing nodes prepare together.
+A POST http request containing a Disruption that is being reconciled is sent to each of the hooks.
+Mutually exclusive with HookV2BasePath.<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -201,6 +215,45 @@ Maintenance will proceed only if the endpoint responds 2XX.
 HookV2BasePath holds the base path for the prepare, ready, terminate hooks that will be
 called at different stages of the NodeDisruption lifecycle.
 A POST http request containing a Disruption that is being reconciled is sent ot each of the hooks.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody><tr>
+        <td><b>caBundle</b></td>
+        <td>string</td>
+        <td>
+          a PEM encoded CA bundle which will be used to validate the webhook's server certificate. If unspecified, system trust roots on the apiserver are used.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>url</b></td>
+        <td>string</td>
+        <td>
+          URL that will be called by the hook, in standard URL form (`scheme://host:port/path`).<br/>
+        </td>
+        <td>false</td>
+      </tr></tbody>
+</table>
+
+
+### ApplicationDisruptionBudget.spec.hookV3BasePath
+<sup><sup>[↩ Parent](#applicationdisruptionbudgetspec)</sup></sup>
+
+
+
+HookV3BasePath holds the base path for the accept, prepare, ready, terminate hooks that will be
+called at different stages of the NodeDisruption lifecycle. It is the v2 workflow with an
+additional accept step: prepare is only called once every budget impacted by the NodeDisruption
+has accepted it, so that applications sharing nodes prepare together.
+A POST http request containing a Disruption that is being reconciled is sent to each of the hooks.
+Mutually exclusive with HookV2BasePath.
 
 <table>
     <thead>
@@ -1331,6 +1384,14 @@ NodeDisruptionStatus defines the observed state of NodeDisruption (/!\ it is eve
           <br/>
         </td>
         <td>true</td>
+      </tr><tr>
+        <td><b>accepted</b></td>
+        <td>boolean</td>
+        <td>
+          Accepted is set to true when the application manager of a budget using v3 hooks accepted the disruption.
+Preparation starts only once every impacted budget accepted it.<br/>
+        </td>
+        <td>false</td>
       </tr><tr>
         <td><b><a href="#nodedisruptionstatusdisrupteddisruptionbudgetsindexreference">reference</a></b></td>
         <td>object</td>

@@ -98,6 +98,14 @@ var (
 		},
 		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind", "status_code"},
 	)
+	// V3 Hooks
+	DisruptionBudgetCheckAcceptHookStatusCodeTotal = promauto.With(metrics.Registry).NewCounterVec(
+		prometheus.CounterOpts{
+			Name: METIC_PREFIX + "disruption_budget_accept_hook_status_code_total",
+			Help: "Total number of request by HTTP status code",
+		},
+		[]string{"disruption_budget_namespace", "disruption_budget_name", "disruption_budget_kind", "status_code"},
+	)
 	DisruptionBudgetCheckHealthHookErrorTotal = promauto.With(metrics.Registry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: METIC_PREFIX + "disruption_budget_health_hook_error_total",

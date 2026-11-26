@@ -85,6 +85,25 @@ spec:
                       URL form (`scheme://host:port/path`).
                     type: string
                 type: object
+              hookV3BasePath:
+                description: |-
+                  HookV3BasePath holds the base path for the accept, prepare, ready, terminate hooks that will be
+                  called at different stages of the NodeDisruption lifecycle. It is the v2 workflow with an
+                  additional accept step: prepare is only called once every budget impacted by the NodeDisruption
+                  has accepted it, so that applications sharing nodes prepare together.
+                  A POST http request containing a Disruption that is being reconciled is sent to each of the hooks.
+                  Mutually exclusive with HookV2BasePath.
+                properties:
+                  caBundle:
+                    description: a PEM encoded CA bundle which will be used to validate
+                      the webhook's server certificate. If unspecified, system trust
+                      roots on the apiserver are used.
+                    type: string
+                  url:
+                    description: URL that will be called by the hook, in standard
+                      URL form (`scheme://host:port/path`).
+                    type: string
+                type: object
               maxDisruptions:
                 description: A NodeDisruption is allowed if at most "maxDisruptions"
                   nodes selected by selectors are unavailable after the disruption.
@@ -226,6 +245,11 @@ spec:
             required:
             - maxDisruptions
             type: object
+            x-kubernetes-validations:
+            - message: hookV2BasePath and hookV3BasePath are mutually exclusive
+              rule: '!(has(self.hookV2BasePath) && has(self.hookV2BasePath.url) &&
+                size(self.hookV2BasePath.url) > 0 && has(self.hookV3BasePath) && has(self.hookV3BasePath.url)
+                && size(self.hookV3BasePath.url) > 0)'
           status:
             description: DisruptionBudgetStatus defines the observed state of ApplicationDisruptionBudget
             properties:

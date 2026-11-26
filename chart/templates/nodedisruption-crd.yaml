@@ -128,6 +128,11 @@ spec:
                 description: List of all the budgets disrupted by the NodeDisruption
                 items:
                   properties:
+                    accepted:
+                      description: |-
+                        Accepted is set to true when the application manager of a budget using v3 hooks accepted the disruption.
+                        Preparation starts only once every impacted budget accepted it.
+                      type: boolean
                     ok:
                       description: Ok is set to true when application manager preparation
                         is complete and ready for the NodeDisruption to continue.

@@ -110,6 +110,9 @@ type DisruptedBudgetStatus struct {
 	Ok bool `json:"ok"`
 	// Waiting is set to true while the budget waits for its notice period: its hooks have not been called yet.
 	Waiting bool `json:"waiting,omitempty"`
+	// Accepted is set to true when the application manager of a budget using v3 hooks accepted the disruption.
+	// Preparation starts only once every impacted budget accepted it.
+	Accepted bool `json:"accepted,omitempty"`
 }
 
 //+kubebuilder:object:root=true

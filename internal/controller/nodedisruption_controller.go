@@ -434,7 +434,7 @@ func (ndr *SingleNodeDisruptionReconciler) terminateAllImpactedBudgets(ctx conte
 			Resolver:                    ndr.Resolver,
 		}
 
-		if !budgetResolver.V2HooksReady() {
+		if !budgetResolver.V2HooksReady() && !budgetResolver.V3HooksReady() {
 			continue
 		}
 
@@ -545,7 +545,10 @@ func (ndr *SingleNodeDisruptionReconciler) budgetSupportsDisruptionType(budget B
 	return slices.Contains(budget.GetSupportedDisruptionTypes(), ndr.NodeDisruption.Spec.Type)
 }
 
-// ValidateBudgetConstraints check that the Node Disruption is valid against the budgets defined in the cluster
+// acceptPendingReason is the reason set on budgets waiting for every impacted budget to accept the disruption.
+const acceptPendingReason = "waiting for all impacted budgets to accept the disruption"
+
+// ValidateWithBudgetConstraints check that the Node Disruption is valid against the budgets defined in the cluster
 func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx context.Context, budgets []Budget, currentStatuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) (anyFailed bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
 	disruptedNodes := resolver.NewNodeSetFromStringList(ndr.NodeDisruption.Status.DisruptedNodes)
 	anyFailed = false
@@ -581,48 +584,109 @@ func (ndr *SingleNodeDisruptionReconciler) ValidateWithBudgetConstraints(ctx con
 	}
 
 	now := time.Now()
-	for _, budget := range impactedBudgets {
-		ref := budget.GetNamespacedName()
-		idx := slices.IndexFunc(currentStatuses, func(s nodedisruptionv1alpha1.DisruptedBudgetStatus) bool {
-			return s.Reference == ref
-		})
-		currentStatus := nodedisruptionv1alpha1.DisruptedBudgetStatus{}
-		if idx > -1 {
-			currentStatus = currentStatuses[idx]
+
+	// When a budget uses v3 hooks, no budget is prepared until every impacted budget accepted the
+	// disruption. They are then all prepared in this same reconciliation.
+	if slices.ContainsFunc(impactedBudgets, func(b Budget) bool { return b.V3HooksReady() }) {
+		allAccepted, anyRefused, acceptStatuses := ndr.checkAccepted(ctx, impactedBudgets, currentStatuses, now)
+		if !allAccepted {
+			return anyRefused, acceptStatuses
 		}
+	}
+
+	for _, budget := range impactedBudgets {
+		currentStatus := currentStatusOf(currentStatuses, budget.GetNamespacedName())
 
 		if opening := ndr.pendingNoticeOpening(budget, currentStatus, now); opening != nil {
-			log.FromContext(ctx).Info("budget waiting for notice period",
-				"budget", ref, "type", ndr.NodeDisruption.Spec.Type, "opensAt", *opening)
-			statuses = append(statuses, ndr.waitingStatus(budget, *opening))
-			// Count a wait once, when it starts, not on every pass.
-			if !currentStatus.Waiting {
-				DisruptionBudgetNoticeDeferredTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, ndr.NodeDisruption.Spec.Type).Inc()
-			}
-			if ndr.earliestNoticeOpening == nil || opening.Before(*ndr.earliestNoticeOpening) {
-				ndr.earliestNoticeOpening = opening
-			}
+			statuses = append(statuses, ndr.waitForNotice(ctx, budget, currentStatus, *opening))
 			continue
 		}
-		if budget.V2HooksReady() {
-			status := ndr.v2HookCheck(ctx, budget, currentStatus)
-			if !status.Ok {
-				anyFailed = true
-			}
-			statuses = append(statuses, status)
+		var status nodedisruptionv1alpha1.DisruptedBudgetStatus
+		if budget.V2HooksReady() || budget.V3HooksReady() {
+			status = ndr.prepareReadyHookCheck(ctx, budget, currentStatus)
 		} else {
-			status := ndr.legacyHookCheck(ctx, budget)
-			if !status.Ok {
-				anyFailed = true
-			}
-			statuses = append(statuses, status)
+			status = ndr.legacyHookCheck(ctx, budget)
 		}
+		// A v3 budget only gets here once it accepted the disruption. It stays accepted if its prepare
+		// hook fails, and goes through accept then prepare again.
+		if budget.V3HooksReady() {
+			status.Accepted = true
+		}
+		if !status.Ok {
+			anyFailed = true
+		}
+		statuses = append(statuses, status)
 	}
 
 	return anyFailed, statuses
 }
 
-func (ndr *SingleNodeDisruptionReconciler) v2HookCheck(ctx context.Context, budget Budget, currentStatus nodedisruptionv1alpha1.DisruptedBudgetStatus) nodedisruptionv1alpha1.DisruptedBudgetStatus {
+// checkAccepted calls the accept hook of the v3 budgets that are not preparing yet. The other budgets
+// count as accepted, except the ones waiting for their notice period. Unless all accepted, the returned
+// statuses are the final ones, with no budget prepared. A refusal is a failure, waiting for a notice
+// period is not.
+func (ndr *SingleNodeDisruptionReconciler) checkAccepted(ctx context.Context, impactedBudgets []Budget, currentStatuses []nodedisruptionv1alpha1.DisruptedBudgetStatus, now time.Time) (allAccepted bool, anyRefused bool, statuses []nodedisruptionv1alpha1.DisruptedBudgetStatus) {
+	allAccepted = true
+	for _, budget := range impactedBudgets {
+		ref := budget.GetNamespacedName()
+		currentStatus := currentStatusOf(currentStatuses, ref)
+
+		var status nodedisruptionv1alpha1.DisruptedBudgetStatus
+		opening := ndr.pendingNoticeOpening(budget, currentStatus, now)
+		switch {
+		case opening != nil:
+			// accept is not called before the notice period opens
+			status = ndr.waitForNotice(ctx, budget, currentStatus, *opening)
+			allAccepted = false
+		case currentStatus.Preparing:
+			// keep the status of a budget already preparing, its ready hook is not called
+			status = currentStatus
+		case !budget.V3HooksReady():
+			status = nodedisruptionv1alpha1.DisruptedBudgetStatus{Reference: ref, Reason: acceptPendingReason}
+		default:
+			if err := budget.CallAcceptHook(ctx, ndr.NodeDisruption, ndr.Config.HealthHookTimeout); err != nil {
+				log.FromContext(ctx).Info("budget did not accept the disruption", "budget", ref, "reason", err.Error())
+				DisruptionBudgetRejectedTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, ndr.NodeDisruption.Spec.Type).Inc()
+				status = nodedisruptionv1alpha1.DisruptedBudgetStatus{Reference: ref, Reason: fmt.Sprintf("not accepted: %s", err)}
+				allAccepted = false
+				anyRefused = true
+			} else {
+				status = nodedisruptionv1alpha1.DisruptedBudgetStatus{Reference: ref, Reason: acceptPendingReason, Accepted: true}
+			}
+		}
+		statuses = append(statuses, status)
+	}
+	return allAccepted, anyRefused, statuses
+}
+
+// currentStatusOf returns the status of the budget from the previous reconciliation (zero value if none).
+func currentStatusOf(currentStatuses []nodedisruptionv1alpha1.DisruptedBudgetStatus, ref nodedisruptionv1alpha1.NamespacedName) nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	idx := slices.IndexFunc(currentStatuses, func(s nodedisruptionv1alpha1.DisruptedBudgetStatus) bool {
+		return s.Reference == ref
+	})
+	if idx > -1 {
+		return currentStatuses[idx]
+	}
+	return nodedisruptionv1alpha1.DisruptedBudgetStatus{}
+}
+
+// waitForNotice returns the status of a budget waiting for its notice period, and records the
+// earliest opening so that the disruption is retried then.
+func (ndr *SingleNodeDisruptionReconciler) waitForNotice(ctx context.Context, budget Budget, currentStatus nodedisruptionv1alpha1.DisruptedBudgetStatus, opening time.Time) nodedisruptionv1alpha1.DisruptedBudgetStatus {
+	ref := budget.GetNamespacedName()
+	log.FromContext(ctx).Info("budget waiting for notice period",
+		"budget", ref, "type", ndr.NodeDisruption.Spec.Type, "opensAt", opening)
+	// Count a wait once, when it starts, not on every pass.
+	if !currentStatus.Waiting {
+		DisruptionBudgetNoticeDeferredTotal.WithLabelValues(ref.Namespace, ref.Name, ref.Kind, ndr.NodeDisruption.Spec.Type).Inc()
+	}
+	if ndr.earliestNoticeOpening == nil || opening.Before(*ndr.earliestNoticeOpening) {
+		ndr.earliestNoticeOpening = &opening
+	}
+	return ndr.waitingStatus(budget, opening)
+}
+
+func (ndr *SingleNodeDisruptionReconciler) prepareReadyHookCheck(ctx context.Context, budget Budget, currentStatus nodedisruptionv1alpha1.DisruptedBudgetStatus) nodedisruptionv1alpha1.DisruptedBudgetStatus {
 	logger := log.FromContext(ctx)
 
 	ref := budget.GetNamespacedName()

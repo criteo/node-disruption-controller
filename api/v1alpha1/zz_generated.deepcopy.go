@@ -92,6 +92,7 @@ func (in *ApplicationDisruptionBudgetSpec) DeepCopyInto(out *ApplicationDisrupti
 	in.PVCSelector.DeepCopyInto(&out.PVCSelector)
 	out.HealthHook = in.HealthHook
 	out.HookV2BasePath = in.HookV2BasePath
+	out.HookV3BasePath = in.HookV3BasePath
 	if in.SupportedNodeDisruptionTypes != nil {
 		in, out := &in.SupportedNodeDisruptionTypes, &out.SupportedNodeDisruptionTypes
 		*out = make([]string, len(*in))
